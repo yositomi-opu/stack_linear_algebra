@@ -1,0 +1,20 @@
+/* 2026-01-26 github version */
+/* 2026-01-25 github upload */
+/* 2026-01-05 use ky_linear_algebra.txt */
+/* 2025-08-17 Bug fix, add Cmsg, change code for correct patterns */
+/* MCQ for Q-matrix(fbp:false,ssc:0)  and general (fbp:true, ssc:1) */
+__lc:2; /* lang code */
+_lang:["en", "ja"][__lc];
+nocorrectS:["No correct options above.", "選択肢に正解はない"][__lc];
+noidS:["I have no idea", "わからない"][__lc];
+powerdisp:true;
+_rp(L):=random_permutation(L);
+tex2(m):=sconcat("\\(",tex1(m),"\\)");
+texP1(a,u):=sconcat("\\(",tex1(a),"+p",tex1(u),"\\quad (p\\in{\\mathbb R})\\)");
+texP2(a,u,v):=sconcat("\\(",tex1(a),"+p",tex1(u),"+q",tex1(v),"\\quad (p,q\\in{\\mathbb R})\\)");
+CLbase:[];
+WLbase:[];
+CmsgL:[];/* 正解パターン用フィードバックメッセージ */
+WmsgL:[];/* 誤答パターン用フィードバックメッセージ */
+addCopt(s, m):=block([], CLbase:append(CLbase, [s]), CmsgL:append(CmsgL, [m]));
+addWopt(s, m):=block([], WLbase:append(WLbase, [s]), WmsgL:append(WmsgL, [m]));

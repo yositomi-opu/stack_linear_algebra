@@ -1,4 +1,4 @@
-* You can get latest version via:  */
+/* You can get latest version via:  */
 /*     curl -O https://raw.githubusercontent.com/yositomi-opu/stack_linear_algebra/main/mcq_template_pre.txt */
 _max_opts:10; /* 各パターンの選択肢の数最大値 (正答・誤答共通) */
 _max_patterns:99; /* 最大パターン数(正答・誤答共通) */

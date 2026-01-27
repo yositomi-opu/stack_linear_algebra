@@ -4,36 +4,36 @@ _cw_delimiter:_max_opts*(_max_patterns+1); /* 選択肢リストのIDの正答�
 /* number of patterns of correct/incorrect(wrong) options(auto-gen) */
 CLlen:map(length, CLbase);
 WLlen:map(length, WLbase);
-cN:__mcq_min_max(cN,length(flatten(CLbase)));
-wN:__mcq_min_max(wN,length(flatten(WLbase)));
-/* number of patterns of correct/incorrect(wrong) options(auto-gen) /
-/ on: オプションの数, bsL: パターンのリスト(l:パターン数) /
-/ on がpattern数以上のときは, 各パターンから1つ以上選ぶ /
-/ on がpattern数ないときは, pattern のうちon個から1つずつ選ぶ */
-mkPattern(on,bsL):=block([l:length(bsL),k,ptL:map(length,bsL),pt],if on=0 then return([]) 
-else if on>=l then while apply("+",ptL)>on do (k:rand(l)+1,if ptL[k]>1 then ptL[k]:ptL[k]-1) 
-else (ptL:makelist(0,l),while apply("+",ptL)<on do (k:rand(l)+1,if ptL[k]=0 then ptL[k]:1)),return(ptL));
+cN:__mcq_min_max(cN, length(flatten(CLbase)));
+wN:__mcq_min_max(wN, length(flatten(WLbase)));
+/* number of patterns of correct/incorrect(wrong) options(auto-gen) */
+/* on: オプションの数, bsL: パターンのリスト(l:パターン数) */
+/* on がpattern数以上のときは, 各パターンから1つ以上選ぶ */
+/* on がpattern数ないときは, pattern のうちon個から1つずつ選ぶ */
+mkPattern(on,bsL):=block([l:length(bsL), k, ptL:map(length,bsL), pt], if on=0 then return([]) 
+else if on>=l then while apply("+",ptL)>on do (k:rand(l)+1, if ptL[k]>1 then ptL[k]:ptL[k]-1) 
+else (ptL:makelist(0, l),while apply("+", ptL)<on do (k:rand(l)+1, if ptL[k]=0 then ptL[k]:1)), return(ptL));
 cNL:mkPattern(cN, CLbase);
 wNL:mkPattern(wN, WLbase);
-CLL:makelist(makelist(CLbase[k][j],j,1,min(cNL[k],length(CLbase[k]))),k,1,length(cNL));
-WLL:makelist(makelist(WLbase[k][j],j,1,min(wNL[k],length(WLbase[k]))),k,1,length(wNL));
+CLL:makelist(makelist(CLbase[k][j], j, 1, min(cNL[k], length(CLbase[k]))), k, 1, length(cNL));
+WLL:makelist(makelist(WLbase[k][j], j, 1, min(wNL[k], length(WLbase[k]))), k, 1, length(wNL));
 /* "no correct options above" */
 _nocorrect_flag:_max_patterns+1;
 _noc_id:_nocorrect_flag*_cw_delimiter;
 _noidea_flag:_max_patterns*10+1;
 _noi_id:_noidea_flag*_cw_delimiter;
-NCL:if nocorrecttrue then [[1,true,nocorrectS]] else [[_noc_id,false,nocorrectS]];
+NCL:if nocorrecttrue then [[1, true, nocorrectS]] else [[_noc_id, false, nocorrectS]];
 /* "I have no idea" */
-NOI:[[_noi_id,false,noidS]];
-ListCL0:apply(append,makelist(makelist([_max_opts*k+j,true,CLL[k][j]],j,1,length(CLL[k])),k,1,length(CLL)));
-ListWL0:apply(append,makelist(makelist([_cw_delimiter*k+j,false,WLL[k][j]],j,1,length(WLL[k])),k,1,length(WLL)));
+NOI:[[_noi_id, false, noidS]];
+ListCL0:apply(append, makelist(makelist([_max_opts*k+j, true, CLL[k][j]], j, 1, length(CLL[k])), k, 1, length(CLL)));
+ListWL0:apply(append, makelist(makelist([_cw_delimiter*k+j, false, WLL[k][j]], j, 1, length(WLL[k])), k, 1,length(WLL)));
 ListCL1:_rp(ListCL0);
 ListWL1:_rp(ListWL0);
-taC:_rp(makelist(ListWL1[k],k,1,wN));
-taW:_rp(append(makelist(ListCL1[k],k,1,cN),makelist(ListWL1[k],k,1,wN)));
+taC:_rp(makelist(ListWL1[k], k, 1, wN));
+taW:_rp(append(makelist(ListCL1[k], k, 1, cN),makelist(ListWL1[k], k, 1, wN)));
 ta1:taW;
-if __mcq_no_correctopt and __mcq_nocorrecttrue then ta1:append(taC,NCL) else ta1:append(taW,NCL);
-if __mcq_noidea then ta1:append(ta1,NOI);
+if __mcq_no_correctopt and __mcq_nocorrecttrue then ta1:append(taC, NCL) else ta1:append(taW, NCL);
+if __mcq_noidea then ta1:append(ta1, NOI);
 Cans1:mcq_correct(ta1);
 if __mcq_qtext_auto then qtext:sconcat(qtext,
  if __mcq_rb_cb="cb" then "すべて選べ." 

@@ -4,8 +4,8 @@ _cw_delimiter:_max_opts*(_max_patterns+1); /* 選択肢リストのIDの正答�
 /* number of patterns of correct/incorrect(wrong) options(auto-gen) */
 CLlen:map(length, CLbase);
 WLlen:map(length, WLbase);
-cN:eval_string(sconcat(__mcq_min_max, "(cN,length(flatten(CLbase)))"));
-wN:eval_string(sconcat(__mcq_min_max, "(wN,length(flatten(WLbase)))"));
+cN:__mcq_min_max(cN,length(flatten(CLbase)));
+wN:__mcq_min_max(wN,length(flatten(WLbase)));
 /* number of patterns of correct/incorrect(wrong) options(auto-gen) /
 / on: オプションの数, bsL: パターンのリスト(l:パターン数) /
 / on がpattern数以上のときは, 各パターンから1つ以上選ぶ /

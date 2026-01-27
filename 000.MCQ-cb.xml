@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Latest version: https://raw.githubusercontent.com/yositomi-opu/stack_linear_algebra/main/000.MCQ-cb.xml -->
+<!-- Download: wget https://raw.githubusercontent.com/yositomi-opu/stack_linear_algebra/main/000.MCQ-cb.xml -->
+<!-- or: curl -O https://raw.githubusercontent.com/yositomi-opu/stack_linear_algebra/main/000.MCQ-cb.xml -->
 <quiz>
 <!-- question: 109908  -->
   <question type="stack">

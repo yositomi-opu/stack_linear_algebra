@@ -1,3 +1,6 @@
+/* Latest version: https://raw.githubusercontent.com/yositomi-opu/stack_linear_algebra/main/mcq_template_post.txt */
+/* Download: wget https://raw.githubusercontent.com/yositomi-opu/stack_linear_algebra/main/mcq_template_post.txt */
+/* or: curl -O https://raw.githubusercontent.com/yositomi-opu/stack_linear_algebra/main/mcq_template_post.txt */
 _max_opts:10; /* 各パターンの選択肢の数最大値 (正答・誤答共通) */
 _max_patterns:99; /* 最大パターン数(正答・誤答共通) */
 _cw_delimiter:_max_opts*(_max_patterns+1); /* 選択肢リストのIDの正答・誤答境界値 */

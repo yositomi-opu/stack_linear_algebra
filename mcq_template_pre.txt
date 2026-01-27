@@ -1,3 +1,6 @@
+/* Latest version: https://raw.githubusercontent.com/yositomi-opu/stack_linear_algebra/main/mcq_template_pre.txt */
+/* Download: wget https://raw.githubusercontent.com/yositomi-opu/stack_linear_algebra/main/mcq_template_pre.txt */
+/* or: curl -O https://raw.githubusercontent.com/yositomi-opu/stack_linear_algebra/main/mcq_template_pre.txt */
 /* 2026-01-26 github version */
 /* 2026-01-25 github upload */
 /* 2026-01-05 use ky_linear_algebra.txt */

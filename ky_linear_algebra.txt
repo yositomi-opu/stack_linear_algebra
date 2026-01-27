@@ -111,3 +111,6 @@ integer_vector2(v):=block([d,g,dL,nL,vv,sz],sz:matrix_size(v)[1],dL:map(denom, l
 /* new nullspace function for educational use */
 nullspace2(A):=block([rk, pv:[], pv1:[], F, FL:[], F1, rw, cl, rz, k, k1:1], rk:rank(A), [rw, cl]:matrix_size(A), F:redeche(A), for k:1 thru rk do pv:append(pv, [get_first_non_zero_column(F, k)]), rz:genmatrix(lambda([i,j], 0), 1, cl), for k:1 thru cl do if member(k, pv) then (FL:append(FL, [row(F, k1)]), k1:k1+1) else (FL:append(FL, [rz]), pv1:append(pv1, [k])), F1:-apply(addrow, FL)+genmatrix(lambda([i,j], if i=j then 1 else 0), cl, cl), return(makelist(col(F1, pv1[k]), k, 1, length(pv1))));
 
+/* display determinant of matrix */
+vmat(m):=block([lc:lmxchar,s:"\\("],lmxchar:"|",s:sconcat(s,tex1(m),"\\)"),lmxchar:lc,return(s));
+

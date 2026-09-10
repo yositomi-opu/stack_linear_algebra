@@ -4,12 +4,18 @@
 from __future__ import annotations
 
 import csv
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
 
 SAMPLE_DIR = Path(__file__).resolve().parent
 EXPECTED = {code: 10 for code in ("NUR", "CIV", "ECO", "STA", "ETH", "ICT")}
+SELECTION_PROMPTS = (
+    "正しいものを1つ選べ。",
+    "正しいものを1つ選べ（複数ある場合も1つでよい）。",
+    "正しいものをすべて選べ。",
+)
 
 
 def validate_file(path: Path) -> str:
@@ -21,7 +27,9 @@ def validate_file(path: Path) -> str:
     if not rows or any(not row for row in rows):
         raise ValueError(f"{path.name}: empty file or row")
 
-    configs = {row[1]: row[2] for row in rows if row[0] == "config" and len(row) == 3}
+    configs = {row[1]: row[2] for row in rows if row[0] == "config" and len(row) >= 3}
+    if configs.get("csv_schema") != "2":
+        raise ValueError(f"{path.name}: CSV schema is not 2")
     question_id = configs.get("question_id", "")
     if question_id != path.stem:
         raise ValueError(f"{path.name}: question_id is {question_id!r}")
@@ -31,31 +39,43 @@ def validate_file(path: Path) -> str:
         raise ValueError(f"{path.name}: base language is not Japanese")
 
     qtexts = [row for row in rows if row[0] == "qtextL"]
-    if len(qtexts) != 1 or len(qtexts[0]) != 3 or qtexts[0][1] != "ja":
+    if len(qtexts) != 1 or len(qtexts[0]) != 4 or qtexts[0][1:3] != ["string", "ja"]:
         raise ValueError(f"{path.name}: expected one Japanese qtextL")
-    if "__SELPROMPT__" not in qtexts[0][2] or "__SELTYPE__" in qtexts[0][2]:
+    question_text = qtexts[0][3]
+    if question_text.count("__SELPROMPT__") != 1 or "__SELTYPE__" in question_text:
         raise ValueError(f"{path.name}: invalid selection prompt")
+    prefix, suffix = question_text.split("__SELPROMPT__")
+    if suffix.strip() or not prefix.rstrip().endswith(("。", ".", "！", "!", "？", "?")):
+        raise ValueError(f"{path.name}: __SELPROMPT__ must be an independent final sentence")
+    for prompt in SELECTION_PROMPTS:
+        rendered = question_text.replace("__SELPROMPT__", prompt)
+        if "__SELPROMPT__" in rendered or not rendered.endswith(prompt):
+            raise ValueError(f"{path.name}: selection prompt substitution failed")
 
     options: dict[str, Counter[str]] = defaultdict(Counter)
-    feedback: Counter[str] = Counter()
+    feedback: dict[str, Counter[str]] = defaultdict(Counter)
     for row in rows:
-        if row[0] == "option":
-            if len(row) != 4 or row[2] not in {"C", "W"} or not row[3].strip():
+        option_match = re.fullmatch(r"option(\d+)([CW])", row[0])
+        feedback_match = re.fullmatch(r"feedback(\d+)([CW])?", row[0])
+        if option_match:
+            if len(row) != 4 or row[1] not in {"string", "cas", "cas_list"} or not row[3].strip():
                 raise ValueError(f"{path.name}: invalid option row {row!r}")
-            options[row[1]][row[2]] += 1
-        elif row[0] == "feedback":
-            if len(row) != 3 or not row[2].strip():
+            options[option_match.group(1)][option_match.group(2)] += 1
+        elif feedback_match:
+            if len(row) != 4 or row[1] not in {"string", "cas"} or not row[3].strip():
                 raise ValueError(f"{path.name}: invalid feedback row {row!r}")
-            feedback[row[1]] += 1
+            feedback[feedback_match.group(1)][feedback_match.group(2) or "shared"] += 1
 
-    expected_patterns = int(configs.get("num_options", "0"))
-    if len(options) != expected_patterns:
-        raise ValueError(f"{path.name}: pattern count does not match num_options")
+    required_choices = int(configs.get("num_options", "0"))
+    if len(options) < required_choices:
+        raise ValueError(f"{path.name}: fewer patterns than num_options")
     for pattern, truths in options.items():
-        if truths != Counter({"C": 1, "W": 1}) or feedback[pattern] != 1:
+        feedback_shape = feedback[pattern]
+        valid_feedback = not feedback_shape or feedback_shape == Counter({"shared": 1}) or feedback_shape == Counter({"C": 1, "W": 1})
+        if truths != Counter({"C": 1, "W": 1}) or not valid_feedback:
             raise ValueError(f"{path.name}: pattern {pattern} is not one complete pair")
-    if set(feedback) != set(options):
-        raise ValueError(f"{path.name}: option and feedback patterns differ")
+    if not set(feedback).issubset(options):
+        raise ValueError(f"{path.name}: feedback exists without a matching option")
     return question_id
 
 

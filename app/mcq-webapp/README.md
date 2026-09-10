@@ -201,9 +201,9 @@ py -3 app\mcq-webapp\server.py --check
 - `tex_library.mac`
 - `mcq_template_pre.mac`
 
-「定義済み変数」には、問題変数欄のトップレベル代入から抽出した変数名、型、リストの`length`、評価値が表示されます。選択肢がCAS式の場合は入力欄にも評価結果が表示され、リストなら`CASリスト length: 3`のように候補数を確認できます。評価結果がリストだったCAS式は、XML生成時にも候補リスト式として扱われます。
+「定義済み変数」には、問題変数欄のトップレベル代入から抽出した変数名、型、リストの`length`、評価値が表示されます。選択肢の`cas_list`は入力欄にも評価結果が表示され、`CASリスト length: 3`のように候補数を確認できます。`cas_list`の評価結果がリストでなければエラーにします。一方、型が`cas`の値は、評価結果がリストの形でも1個の選択肢として扱います。
 
-CAS式をまだ評価していない場合、候補数は安全側に1件として扱われます。「問題変数を評価」を押すとリスト長に応じて選択肢数の上限が更新されます。1つのパターン内にCASリスト式を複数置いた場合は、各リストを平坦化した候補リストとして生成します。
+`cas_list`をまだ評価していない場合、候補数は安全側に1件として扱われます。「問題変数を評価」を押すとリスト長に応じて選択肢数の上限が更新されます。1つのパターン内にCASリスト式を複数置いた場合は、各リストを平坦化した候補リストとして生成します。
 
 問題変数または選択肢を変更すると評価結果は「再評価が必要」になります。ランダム変数を含む場合、表示される値と`length`はその評価時点の1回分です。
 
@@ -224,9 +224,10 @@ API応答の詳細は画面上で展開して確認できます。Workshop公開
 
 ## CSV / XLSX 形式
 
-ヘッダーは付けず、行の第1フィールドで種類を指定します。
+ヘッダーは付けず、`config`行は従来どおり「項目、値」の3列、データ行は「項目、型、言語、値」の4列で記述します。新規保存では`csv_schema=2`を出力しますが、従来形式のCSVも読み込めます。
 
 ```csv
+config,csv_schema,2
 config,question_id,000.sample-mcq
 config,mode,rb
 config,num_options,2
@@ -234,35 +235,38 @@ config,num_correct,1
 config,random_correct,false
 config,correct_counts,"1, 2"
 config,require_pairs,true
-config,feedback_by_truth,false
-qtextL,ja,"次の選択肢について答えよ。__SELPROMPT__"
-qtextL,en,"Consider the following options. __SELPROMPT__"
-qvar,,"aa1:rand([1, 2, 3])"
-qvar,,"aa2:rand([3, 4, 5])"
-option,01,C,"パターン01が真の場合の文"
-option,01,W,"パターン01が偽の場合の文"
-feedback,01,"パターン01に共通のフィードバック"
-option,02,C,"パターン02が真の場合の文"
-option,02,W,"パターン02が偽の場合の文"
-feedback,02,"パターン02に共通のフィードバック"
+config,feedback_by_truth,mixed
+config,base_language,ja
+qtextL,string,ja,"次の各記述を検討せよ。__SELPROMPT__"
+qvar,cas,n/a,"aa1:rand([1, 2, 3])"
+option1C,string,ja,"パターン1が真の場合の文"
+option1W,string,ja,"パターン1が偽の場合の文"
+feedback1,string,ja,"パターン1に共通のフィードバック"
+option2C,cas_list,n/a,"makelist(castext(i^2),i,1,5)"
+option2W,string,ja,"パターン2が偽の場合の文"
+feedback2C,string,ja,"パターン2の真の場合のフィードバック"
+feedback2W,string,ja,"パターン2の偽の場合のフィードバック"
 ```
 
-- `option`: `option, パターン番号, CまたはW, 文`。同じパターン・真偽を複数行書くと、候補リストになります。
-- `feedback`: `feedback, パターン番号, 文`。同じ命題の C/W に共通です。
-- `qtextL`: `qtextL, 言語, 問題文`。言語は `en`, `ja`, `fr`, `it`, `de`, `pt`, `zh`, `ko`, `ru`, `sv` です。
-- `qvar`: 第3フィールド以降を Maxima 式として、上から順にそのまま挿入します。末尾に `;` または `$` がなければ `;` を補います。CSVセル内の改行も保持します。
+- 第2列の型は`string`、`cas`、`cas_list`です。`string`と`cas`は1個の選択肢、`cas_list`は評価結果のリストを複数候補として使います。`qtextL`と`feedback`では`cas_list`を使用できません。読込時は旧表記の`caslist`も認識しますが、保存時は`cas_list`へ統一します。
+- 第3列は言語コードです。`en`, `ja`, `fr`, `it`, `de`, `pt`, `zh`, `ko`, `ru`, `sv`を使用できます。空欄または`n/a`は言語非依存として読み込み、保存時は`n/a`へ統一します。
+- 同じ項目を`n/a`と個別の言語コードの両方で定義することはできません。どちらか一方へ統一してください。
+- `option1C`と`option1W`はパターン1の真・偽の選択肢です。同一項目・同一言語は1行だけにし、複数候補は`cas_list`で記述します。
+- `feedback1`はパターン1のC/W共通フィードバック、`feedback1C`と`feedback1W`は真偽別フィードバックです。パターンごとに共通と真偽別を混在できます。
+- `qtextL`は問題文、`qvar,cas,n/a,...`は問題変数です。問題変数は上から順に挿入し、末尾に`;`または`$`がなければ`;`を補います。CSVセル内の改行も保持します。
 - `config`: 任意です。`question_id`, `mode`, `num_options`, `num_correct` を指定できます。
 - `config,random_correct,true`: 正解数をランダムにします。候補は `config,correct_counts,"1, 2, 3"` のように指定します。
 - `config,require_pairs,true`: 各パターンに C/W の両方を必須とし、命題の真偽をランダムに割り当てます（既定）。
-- `config,feedback_by_truth,true`: 真偽一対モードで、CとWに異なるフィードバックを設定します。省略時と`false`ではパターン共通です。
+- `config,feedback_by_truth`は`false`、`true`、`mixed`のいずれかです。各`feedback...`行が実際のパターン別設定として優先されます。
 
-真偽一対モードの「行追加」は、新しい同一パターンのC行とW行を1行ずつ追加します。「真偽ごとにフィードバックを変える」がオフの場合、フィードバックはパターンの先頭行で編集し、入力内容がグレー表示のもう一方にも同期されます。オンの場合はCとWを個別に編集でき、CSVでは次のように真偽列を加えます。
+真偽一対モードの「行追加」は、新しい同一パターンのC行とW行を1行ずつ追加します。「追加時は真偽別フィードバック」は新しいパターンの既定値です。各パターンの「このパターンは真偽別」で個別に切り替えられます。共通から真偽別へ変えると同じ内容をC/Wへコピーします。異なるC/Wを共通へ戻そうとした場合は、内容を失わないよう変更せず警告します。
 
 ```csv
-config,feedback_by_truth,true
-feedback,01,C,"真の場合のフィードバック"
-feedback,01,W,"偽の場合のフィードバック"
+feedback1C,string,ja,"真の場合のフィードバック"
+feedback1W,string,ja,"偽の場合のフィードバック"
 ```
+
+`require_pairs=true`のCSVを読み込んだとき、`option1C`または`option1W`の片方がなければ、アプリは欠けた側の空欄行を追加して警告します。`cas_list`はローカルMaximaでリストであることと`length`を検査します。同じ項目を複数言語で指定した場合は、言語間のリスト長も一致する必要があります。
 
 ### 選択指示のプレースホルダー
 
@@ -277,10 +281,10 @@ feedback,01,W,"偽の場合のフィードバック"
 多言語の選択肢とフィードバックは、言語を追加フィールドにします。
 
 ```csv
-option,01,C,ja,"日本語"
-option,01,C,en,"English"
-feedback,01,ja,"日本語のフィードバック"
-feedback,01,en,"English feedback"
+option1C,string,ja,"日本語"
+option1C,string,en,"English"
+feedback1,string,ja,"日本語のフィードバック"
+feedback1,string,en,"English feedback"
 ```
 
 ## ランダム化
@@ -295,15 +299,13 @@ feedback,01,en,"English feedback"
 config,require_pairs,false
 ```
 
-このモードでは画面が「正解選択肢」と「誤答選択肢」の2表に分かれます。各行でパターン番号、1行1要素の候補リスト、フィードバックを編集します。同じパターン・真偽の `option` を複数行書くと、そのパターンの候補リストになります。フィードバックは1件だけです。
+このモードでは画面が「正解選択肢」と「誤答選択肢」の2表に分かれます。各行でパターン番号、候補、フィードバックを編集します。複数候補は`cas_list`で記述します。
 
 ```csv
-option,01,C,"正解候補1"
-option,01,C,"正解候補2"
-feedback,01,C,"パターン01のフィードバック"
-option,02,W,"誤答候補1"
-option,02,W,"誤答候補2"
-feedback,02,W,"パターン02のフィードバック"
+option1C,cas_list,ja,"[""正解候補1"",""正解候補2""]"
+feedback1C,string,ja,"パターン1のフィードバック"
+option2W,cas_list,ja,"[""誤答候補1"",""誤答候補2""]"
+feedback2W,string,ja,"パターン2のフィードバック"
 ```
 
 CSV/XLSXはパターン、真偽、言語を列として検査しやすいため、入力形式として維持しています。Markdownは説明文や利用ガイドに使用します。

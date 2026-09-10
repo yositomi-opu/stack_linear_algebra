@@ -1283,28 +1283,84 @@ def rows_for_question(
 ) -> list[list[str]]:
     """Convert one question definition to the WebApp CSV schema."""
     rows = [
+        ["config", "csv_schema", "2"],
         ["config", "question_id", question_id],
         ["config", "mode", "rb"],
         ["config", "num_options", str(len(pairs))],
         ["config", "num_correct", "1"],
         ["config", "require_pairs", "true"],
+        ["config", "feedback_by_truth", "false"],
         ["config", "base_language", "ja"],
         [
             "qtextL",
+            "string",
             "ja",
-            f"【{category_name}：{title}】次の記述について答えよ。__SELPROMPT__",
+            f"【{category_name}：{title}】次の各記述を検討せよ。__SELPROMPT__",
         ],
     ]
     for number, (correct, wrong, feedback) in enumerate(pairs, start=1):
-        pattern = f"{number:02d}"
         rows.extend(
             [
-                ["option", pattern, "C", correct],
-                ["option", pattern, "W", wrong],
-                ["feedback", pattern, feedback],
+                [f"option{number}C", "string", "ja", correct],
+                [f"option{number}W", "string", "ja", wrong],
+                [f"feedback{number}", "string", "ja", feedback],
+            ]
+        )
+    if question_id == "STA10":
+        feedback_mode = next(row for row in rows if row[:2] == ["config", "feedback_by_truth"])
+        feedback_mode[2] = "mixed"
+        shared_feedback = next(row for row in rows if row[0] == "feedback4")
+        rows.remove(shared_feedback)
+        rows.extend(
+            [
+                ["feedback4C", "string", "ja", shared_feedback[3]],
+                ["feedback4W", "string", "ja", shared_feedback[3]],
+                ["option5C", "cas_list", "n/a", "makelist(castext(i^2), i, 1, 5)"],
+                ["option5W", "cas_list", "n/a", "makelist(castext(i^3), i, 1, 5)"],
             ]
         )
     return rows
+
+
+def legacy_rows_to_v2(rows: list[list[str]]) -> list[list[str]]:
+    """Convert a simple legacy sample to the four-column CSV schema."""
+    if any(row[:3] == ["config", "csv_schema", "2"] for row in rows):
+        return [
+            *(row[:3] for row in rows if row and row[0] == "config"),
+            *(row[:4] for row in rows if row and row[0] != "config"),
+        ]
+    converted: list[list[str]] = [["config", "csv_schema", "2"]]
+    has_pairs = any(row[:2] == ["config", "require_pairs"] for row in rows)
+    has_feedback_mode = any(row[:2] == ["config", "feedback_by_truth"] for row in rows)
+    has_base_language = any(row[:2] == ["config", "base_language"] for row in rows)
+    for row in rows:
+        if not row:
+            continue
+        if row[0] == "config":
+            converted.append(row[:3])
+        elif row[0] == "qtextL":
+            converted.append(["qtextL", "string", row[1] or "ja", row[2]])
+        elif row[0] == "qvar":
+            converted.append(["qvar", "cas", "n/a", row[2]])
+        elif row[0] == "option":
+            converted.append([f"option{int(row[1])}{row[2]}", "string", "ja", row[3]])
+        elif row[0] == "feedback":
+            suffix = row[2] if len(row) > 3 and row[2] in {"C", "W"} else ""
+            value = row[3] if suffix else row[2]
+            converted.append([f"feedback{int(row[1])}{suffix}", "string", "ja", value])
+    insert_at = next(
+        (index for index, row in enumerate(converted) if row[0] != "config"),
+        len(converted),
+    )
+    if not has_pairs:
+        converted.insert(insert_at, ["config", "require_pairs", "true"])
+        insert_at += 1
+    if not has_feedback_mode:
+        converted.insert(insert_at, ["config", "feedback_by_truth", "false"])
+        insert_at += 1
+    if not has_base_language:
+        converted.insert(insert_at, ["config", "base_language", "ja"])
+    return converted
 
 
 def nursing_rows(number: int) -> list[list[str]]:
@@ -1312,11 +1368,9 @@ def nursing_rows(number: int) -> list[list[str]]:
     source = SAMPLE_DIR / f"SampleNurse{number:03d}.csv"
     with source.open(encoding="utf-8-sig", newline="") as handle:
         rows = list(csv.reader(handle))
-    rows[0] = ["config", "question_id", f"NUR{number:02d}"]
-    if not any(row[:2] == ["config", "require_pairs"] for row in rows):
-        rows.insert(4, ["config", "require_pairs", "true"])
-    if not any(row[:2] == ["config", "base_language"] for row in rows):
-        rows.insert(5, ["config", "base_language", "ja"])
+    rows = legacy_rows_to_v2(rows)
+    question_row = next(row for row in rows if row[:2] == ["config", "question_id"])
+    question_row[2] = f"NUR{number:02d}"
     return rows
 
 
@@ -1329,6 +1383,11 @@ def write_csv(path: Path, rows: list[list[str]]) -> None:
 
 def main() -> None:
     """Generate every applied-subject sample."""
+    for number in range(1, 11):
+        source = SAMPLE_DIR / f"SampleNurse{number:03d}.csv"
+        with source.open(encoding="utf-8-sig", newline="") as handle:
+            write_csv(source, legacy_rows_to_v2(list(csv.reader(handle))))
+
     for number in range(1, 11):
         write_csv(OUTPUT_DIR / f"NUR{number:02d}.csv", nursing_rows(number))
 

@@ -1,19 +1,20 @@
-﻿config,question_id,000.sample-mcq
+﻿config,csv_schema,2
+config,question_id,000.sample-mcq
 config,mode,rb
 config,num_options,2
 config,num_correct,1
 config,random_correct,false
 config,correct_counts,"1, 2"
 config,require_pairs,true
-config,feedback_by_truth,false
-qtextL,ja,"次の選択肢について答えよ。__SELPROMPT__"
-qtextL,en,"Consider the following options. __SELPROMPT__"
-qvar,,"aa1:rand([1, 2, 3])"
-qvar,,"aa2:rand([3, 4, 5])"
-option,01,C,"太陽は恒星である"
-option,01,W,"太陽は惑星である"
-feedback,01,"太陽は自ら光を放つ恒星です。"
-option,02,C,"地球は惑星である"
-option,02,C,"地球は太陽系の惑星である"
-option,02,W,"地球は恒星である"
-feedback,02,"地球は太陽の周りを公転する惑星です。"
+config,feedback_by_truth,mixed
+config,base_language,ja
+qtextL,string,ja,"次の選択肢について答えよ。__SELPROMPT__"
+qvar,cas,n/a,"aa1:rand([1, 2, 3])"
+qvar,cas,n/a,"aa2:rand([3, 4, 5])"
+option1C,string,ja,"太陽は恒星である"
+option1W,string,ja,"太陽は惑星である"
+feedback1,string,ja,"太陽は自ら光を放つ恒星です。"
+option2C,cas_list,ja,"[""地球は惑星である"", ""地球は太陽系の惑星である""]"
+option2W,string,ja,"地球は恒星である"
+feedback2C,string,ja,"地球は太陽の周りを公転する惑星です。"
+feedback2W,string,ja,"地球は恒星ではなく惑星です。"

@@ -762,6 +762,20 @@ h3 {
   margin-left: 24px;
 }
 
+.feedback-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.feedback-mode-toggle input {
+  margin: 0;
+}
+
 .random-correct-row,
 .correct-counts {
   display: flex;
@@ -950,6 +964,10 @@ td:nth-child(5) {
 .status.error {
   color: var(--accent);
   font-weight: 700;
+}
+
+.status.warning {
+  color: #8a4b08;
 }
 
 #xmlOutput {

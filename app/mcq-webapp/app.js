@@ -14,10 +14,10 @@ const WEBAPP_BASE_URL = new URL("./", window.location.href);
 const webappUrl = (path) => new URL(String(path).replace(/^\/+/, ""), WEBAPP_BASE_URL).toString();
 const uiText = (text) => window.mcqI18n?.translate(text) || text;
 const SAMPLE_ROWS = [
-  { pattern: "01", truth: "C", choice_ja: "太陽は恒星である", feedback_ja: "太陽は自ら光を放つ恒星です。", choice_en: "The Sun is a star", feedback_en: "The Sun is a star that emits its own light." },
-  { pattern: "01", truth: "W", choice_ja: "太陽は惑星である", feedback_ja: "太陽は自ら光を放つ恒星です。", choice_en: "The Sun is a planet", feedback_en: "The Sun is a star that emits its own light." },
-  { pattern: "02", truth: "C", choice_ja: "地球は惑星である", feedback_ja: "地球は太陽の周りを公転する惑星です。", choice_en: "Earth is a planet", feedback_en: "Earth is a planet that orbits the Sun." },
-  { pattern: "02", truth: "W", choice_ja: "地球は恒星である", feedback_ja: "地球は太陽の周りを公転する惑星です。", choice_en: "Earth is a star", feedback_en: "Earth is a planet that orbits the Sun." },
+  { pattern: "01", truth: "C", feedback_by_truth: false, choice_ja: "太陽は恒星である", feedback_ja: "太陽は自ら光を放つ恒星です。", choice_en: "The Sun is a star", feedback_en: "The Sun is a star that emits its own light." },
+  { pattern: "01", truth: "W", feedback_by_truth: false, choice_ja: "太陽は惑星である", feedback_ja: "太陽は自ら光を放つ恒星です。", choice_en: "The Sun is a planet", feedback_en: "The Sun is a star that emits its own light." },
+  { pattern: "02", truth: "C", feedback_by_truth: false, choice_ja: "地球は惑星である", feedback_ja: "地球は太陽の周りを公転する惑星です。", choice_en: "Earth is a planet", feedback_en: "Earth is a planet that orbits the Sun." },
+  { pattern: "02", truth: "W", feedback_by_truth: false, choice_ja: "地球は恒星である", feedback_ja: "地球は太陽の周りを公転する惑星です。", choice_en: "Earth is a star", feedback_en: "Earth is a planet that orbits the Sun." },
 ];
 
 const state = {
@@ -27,6 +27,7 @@ const state = {
   templates: { rb: "", cb: "" },
   translationsStale: false,
   questionTypes: Object.fromEntries(LANGS.map((lang) => [lang, "text"])),
+  questionLanguageIndependent: false,
   includeSource: null,
   casEvaluation: { status: "idle", stale: false, variables: [], expressions: {} },
 };
@@ -162,6 +163,7 @@ function bindEvents() {
     const row = (truth) => ({
       pattern,
       truth,
+      feedback_by_truth: el.feedbackByTruth.checked,
       [`choice_${baseLang()}`]: "",
       [`feedback_${baseLang()}`]: "",
     });
@@ -203,17 +205,15 @@ function bindEvents() {
   el.downloadIncludeButton.addEventListener("click", downloadIncludeFile);
   el.saveVariablesSeparately.addEventListener("change", changeIncludeMode);
   el.requirePairs.addEventListener("change", () => {
-    if (el.requirePairs.checked && !el.feedbackByTruth.checked) synchronizeSharedFeedback();
+    if (el.requirePairs.checked) synchronizeSharedFeedback();
     updateBaseLanguageUi();
     renderRows();
     updateOutput();
   });
   el.feedbackByTruth.addEventListener("change", () => {
-    if (!el.feedbackByTruth.checked) synchronizeSharedFeedback();
-    updateBaseLanguageUi();
-    renderRows();
-    markTranslationsStale("フィードバックの共有設定が変更されました");
-    updateOutput();
+    setStatus(el.feedbackByTruth.checked
+      ? "新しく追加するパターンは真偽別フィードバックになります"
+      : "新しく追加するパターンは共通フィードバックになります");
   });
   el.randomCorrect.addEventListener("change", () => {
     updateCorrectCountControls();
@@ -371,11 +371,13 @@ function choiceEvaluationId(index, lang = baseLang()) {
 }
 
 function casChoiceExpressions() {
-  const lang = baseLang();
   return state.rows.flatMap((row, index) => {
-    const expression = String(row[`choice_${lang}`] || "").trim();
-    if ((row[`choice_type_${lang}`] || "text") !== "cas" || !expression) return [];
-    return [{ id: choiceEvaluationId(index, lang), expression }];
+    const languages = row.choice_language_independent ? [baseLang()] : activeLangs();
+    return languages.flatMap((lang) => {
+      const expression = String(row[`choice_${lang}`] || "").trim();
+      if ((row[`choice_type_${lang}`] || "text") !== "cas" || !expression) return [];
+      return [{ id: choiceEvaluationId(index, lang), expression }];
+    });
   });
 }
 
@@ -406,7 +408,7 @@ async function evaluateCasLocally() {
       (Array.isArray(result.expressions) ? result.expressions : []).map((item) => [item.id, item])
     );
     state.casEvaluation.stale = false;
-    applyCasListExpressionResults();
+    const listErrors = validateCasListExpressionResults();
     renderCasVariables();
     updateCasEvaluationBadges();
     updateOptionLimit();
@@ -415,8 +417,11 @@ async function evaluateCasLocally() {
     const failed = expressions.length - evaluated;
     if (!result.ok) {
       setCasEvaluationStatus(result.error || "問題変数を評価できませんでした", "error");
-    } else if (failed) {
-      setCasEvaluationStatus(`評価完了：変数 ${state.casEvaluation.variables.length}件・CAS式 ${evaluated}件成功／${failed}件失敗`, "error");
+    } else if (failed || listErrors.length) {
+      const parts = [`変数 ${state.casEvaluation.variables.length}件・CAS式 ${evaluated}件成功`];
+      if (failed) parts.push(`${failed}件失敗`);
+      parts.push(...listErrors);
+      setCasEvaluationStatus(`評価完了：${parts.join("／")}`, "error");
     } else {
       setCasEvaluationStatus(`評価完了：変数 ${state.casEvaluation.variables.length}件・CAS式 ${evaluated}件`);
     }
@@ -434,13 +439,26 @@ async function evaluateCasLocally() {
   }
 }
 
-function applyCasListExpressionResults() {
-  const lang = baseLang();
+function validateCasListExpressionResults() {
+  const errors = [];
   state.rows.forEach((row, index) => {
-    if ((row[`choice_type_${lang}`] || "text") !== "cas") return;
-    const result = state.casEvaluation.expressions[choiceEvaluationId(index, lang)];
-    if (result?.ok) row[`choice_list_expr_${lang}`] = result.type === "list";
+    const languages = row.choice_language_independent ? [baseLang()] : activeLangs();
+    const lengths = [];
+    languages.forEach((lang) => {
+      if (!row[`choice_list_expr_${lang}`]) return;
+      const result = state.casEvaluation.expressions[choiceEvaluationId(index, lang)];
+      if (!result?.ok) return;
+      if (result.type !== "list") {
+        errors.push(`行${index + 1} ${lang}: cas_listの評価結果がリストではありません`);
+        return;
+      }
+      lengths.push([lang, Number(result.length || 0)]);
+    });
+    if (new Set(lengths.map(([, length]) => length)).size > 1) {
+      errors.push(`行${index + 1}: 言語別cas_listのlengthが一致しません（${lengths.map(([lang, length]) => `${lang}:${length}`).join(", ")}）`);
+    }
   });
+  return errors;
 }
 
 function renderCasVariables() {
@@ -612,11 +630,17 @@ function buildLanguageInputs() {
   });
 }
 
-function valueTypeSelect(value = "text") {
+function choiceValueType(row, lang = baseLang()) {
+  if (!row || (row[`choice_type_${lang}`] || "text") !== "cas") return "text";
+  return row[`choice_list_expr_${lang}`] ? "cas_list" : "cas";
+}
+
+function valueTypeSelect(value = "text", allowList = false) {
   const select = document.createElement("select");
   select.className = "value-type-select";
-  select.innerHTML = '<option value="text">文字列</option><option value="cas">CAS式</option>';
-  select.value = value === "cas" ? "cas" : "text";
+  select.innerHTML = '<option value="text">文字列</option><option value="cas">CAS式</option>'
+    + (allowList ? '<option value="cas_list">CASリスト式</option>' : "");
+  select.value = allowList && value === "cas_list" ? "cas_list" : (value === "cas" ? "cas" : "text");
   return select;
 }
 
@@ -648,9 +672,9 @@ function changeBaseLanguage() {
 function updateBaseLanguageUi() {
   const lang = baseLang();
   el.choiceLanguageHeading.textContent = `選択肢 ${lang}`;
-  el.feedbackLanguageHeading.textContent = el.requirePairs.checked && el.feedbackByTruth.checked
-    ? `真偽別FB ${lang}`
-    : `共通FB ${lang}`;
+  el.feedbackLanguageHeading.textContent = el.requirePairs.checked
+    ? `フィードバック ${lang}`
+    : `FB ${lang}`;
   document.querySelectorAll(".language-choice").forEach((label) => {
     label.classList.toggle("base-language", label.querySelector("input")?.value === lang);
   });
@@ -719,11 +743,11 @@ function updateOptionLimit() {
 
 function evaluatedChoiceCapacity(row, lang = baseLang()) {
   if (!String(row[`choice_${lang}`] || "").trim()) return 0;
-  if ((row[`choice_type_${lang}`] || "text") !== "cas") return 1;
+  if ((row[`choice_type_${lang}`] || "text") !== "cas" || !row[`choice_list_expr_${lang}`]) return 1;
   if (!state.casEvaluation.stale) {
     const index = state.rows.indexOf(row);
     const result = state.casEvaluation.expressions[choiceEvaluationId(index, lang)];
-    if (result?.ok) return result.type === "list" ? Number(result.length || 0) : 1;
+    if (result?.ok && result.type === "list") return Number(result.length || 0);
   }
   // Until Maxima has evaluated a CAS expression, count it conservatively as one.
   return 1;
@@ -778,11 +802,12 @@ function fixedChoicesTextarea(group) {
   const typeKey = `choice_type_${baseLang()}`;
   const editor = document.createElement("div");
   editor.className = "typed-editor";
-  const mode = valueTypeSelect(group.rows.find((row) => row[typeKey])?.[typeKey] || "text");
+  const sourceRow = group.rows.find((row) => row[typeKey]) || group.rows[0];
+  const mode = valueTypeSelect(choiceValueType(sourceRow, baseLang()), true);
   const textarea = document.createElement("textarea");
   const badge = casEvaluationBadge(
     group.rows.map((row) => choiceEvaluationId(state.rows.indexOf(row))),
-    mode.value === "cas"
+    mode.value !== "text"
   );
   const independent = languageIndependentToggle(group.rows, () => {
     copyLanguageIndependentChoices(group.rows);
@@ -800,31 +825,34 @@ function fixedChoicesTextarea(group) {
   });
   mode.addEventListener("change", () => {
     group.rows.forEach((row) => {
-      row[typeKey] = mode.value;
-      row[`choice_list_expr_${baseLang()}`] = false;
+      row[typeKey] = mode.value === "text" ? "text" : "cas";
+      row[`choice_list_expr_${baseLang()}`] = mode.value === "cas_list";
     });
-    editor.classList.toggle("cas", mode.value === "cas");
-    badge.hidden = mode.value !== "cas";
+    editor.classList.toggle("cas", mode.value !== "text");
+    badge.hidden = mode.value === "text";
     markCasEvaluationStale();
     markTranslationsStale("選択肢の入力形式が変更されました");
     updateOutput();
   });
-  editor.classList.toggle("cas", mode.value === "cas");
+  editor.classList.toggle("cas", mode.value !== "text");
   editor.append(independent, mode, badge, textarea);
   return editor;
 }
 
-function languageIndependentToggle(rows, onChange) {
+function languageIndependentToggle(rows, onChange, field = "choice") {
+  const property = `${field}_language_independent`;
   const label = document.createElement("label");
   label.className = "language-independent-toggle";
   const input = document.createElement("input");
   input.type = "checkbox";
-  input.checked = rows.length > 0 && rows.every((row) => row.choice_language_independent);
+  input.checked = rows.length > 0 && rows.every((row) => row[property]);
   input.addEventListener("change", () => {
-    rows.forEach((row) => { row.choice_language_independent = input.checked; });
+    rows.forEach((row) => { row[property] = input.checked; });
     onChange?.(input.checked);
   });
-  label.append(input, document.createTextNode("選択肢は言語に依存しない"));
+  label.append(input, document.createTextNode(field === "feedback"
+    ? "フィードバックは言語に依存しない"
+    : "選択肢は言語に依存しない"));
   return label;
 }
 
@@ -839,6 +867,16 @@ function copyLanguageIndependentChoices(rows) {
   });
 }
 
+function copyLanguageIndependentFeedback(rows) {
+  const source = baseLang();
+  activeLangs().filter((lang) => lang !== source).forEach((lang) => {
+    rows.forEach((row) => {
+      row[`feedback_${lang}`] = row[`feedback_${source}`] || "";
+      row[`feedback_type_${lang}`] = row[`feedback_type_${source}`] || "text";
+    });
+  });
+}
+
 function setFixedGroupChoices(group, values) {
   const choiceKey = `choice_${baseLang()}`;
   const choiceTypeKey = `choice_type_${baseLang()}`;
@@ -846,6 +884,7 @@ function setFixedGroupChoices(group, values) {
   const feedbackTypeKey = `feedback_type_${baseLang()}`;
   const feedback = group.rows.find((row) => String(row[feedbackKey] || "").trim())?.[feedbackKey] || "";
   const choiceType = group.rows.find((row) => row[choiceTypeKey])?.[choiceTypeKey] || "text";
+  const choiceListExpression = group.rows.some((row) => row[`choice_list_expr_${baseLang()}`]);
   const feedbackType = group.rows.find((row) => row[feedbackTypeKey])?.[feedbackTypeKey] || "text";
   values.forEach((value, index) => {
     if (!group.rows[index]) {
@@ -855,6 +894,7 @@ function setFixedGroupChoices(group, values) {
         choice_language_independent: group.rows.every((item) => item.choice_language_independent),
         [choiceKey]: "",
         [choiceTypeKey]: choiceType,
+        [`choice_list_expr_${baseLang()}`]: choiceListExpression,
       };
       state.rows.push(row);
       group.rows.push(row);
@@ -898,7 +938,12 @@ function fixedFeedbackTextarea(group) {
     updateOutput();
   });
   editor.classList.toggle("cas", mode.value === "cas");
-  editor.append(mode, textarea);
+  const independent = languageIndependentToggle(group.rows, () => {
+    copyLanguageIndependentFeedback(group.rows);
+    markTranslationsStale("フィードバックの言語依存設定が変更されました");
+    updateOutput();
+  }, "feedback");
+  editor.append(independent, mode, textarea);
   return editor;
 }
 
@@ -922,6 +967,7 @@ function addFixedPattern(truth) {
   state.rows.push({
     pattern: nextPattern(),
     truth,
+    feedback_by_truth: true,
     [`choice_${baseLang()}`]: "",
     [`feedback_${baseLang()}`]: "",
   });
@@ -983,19 +1029,19 @@ function typedTextareaInput(row, index, field) {
   const editor = document.createElement("div");
   editor.className = "typed-editor";
   const modeKey = `${field}_type_${lang}`;
-  const mode = valueTypeSelect(row[modeKey] || "text");
+  const mode = valueTypeSelect(choiceValueType(row, lang), true);
   const textarea = textareaInput(row, index, `${field}_${lang}`);
-  const badge = casEvaluationBadge([choiceEvaluationId(index, lang)], mode.value === "cas");
+  const badge = casEvaluationBadge([choiceEvaluationId(index, lang)], mode.value !== "text");
   mode.addEventListener("change", () => {
-    state.rows[index][modeKey] = mode.value;
-    state.rows[index][`${field}_list_expr_${lang}`] = false;
-    editor.classList.toggle("cas", mode.value === "cas");
-    badge.hidden = mode.value !== "cas";
+    state.rows[index][modeKey] = mode.value === "text" ? "text" : "cas";
+    state.rows[index][`${field}_list_expr_${lang}`] = mode.value === "cas_list";
+    editor.classList.toggle("cas", mode.value !== "text");
+    badge.hidden = mode.value === "text";
     markCasEvaluationStale();
     markTranslationsStale("選択肢の入力形式が変更されました");
     updateOutput();
   });
-  editor.classList.toggle("cas", mode.value === "cas");
+  editor.classList.toggle("cas", mode.value !== "text");
   if (field === "choice") {
     const groupRows = state.rows.filter((candidate) =>
       String(candidate.pattern || "").trim() === String(row.pattern || "").trim()
@@ -1026,7 +1072,7 @@ function feedbackTextarea(row, index) {
   textarea.dataset.feedbackGroup = key;
   textarea.disabled = index !== firstIndex;
   if (textarea.disabled) {
-    textarea.title = el.feedbackByTruth.checked
+    textarea.title = patternFeedbackSeparate(row)
       ? "フィードバックは同じパターン・真偽の先頭行で編集します"
       : "フィードバックは同じパターンの先頭行で編集します";
   }
@@ -1050,15 +1096,91 @@ function feedbackTextarea(row, index) {
     updateOutput();
   });
   editor.classList.toggle("cas", mode.value === "cas");
+  const patternToggle = feedbackModeToggle(row, index);
+  if (patternToggle) editor.append(patternToggle);
+  if (index === firstIndex) {
+    editor.append(languageIndependentToggle(groupRows, () => {
+      copyLanguageIndependentFeedback(groupRows);
+      markTranslationsStale("フィードバックの言語依存設定が変更されました");
+      updateOutput();
+    }, "feedback"));
+  }
   editor.append(mode, textarea);
   return editor;
 }
 
 function feedbackGroupKey(row) {
   const pattern = String(row.pattern || "").trim() || "01";
-  return el.requirePairs.checked && !el.feedbackByTruth.checked
+  return el.requirePairs.checked && !patternFeedbackSeparate(row)
     ? pattern
     : `${pattern}:${normalizeTruth(row.truth)}`;
+}
+
+function feedbackLanguageIndependent(row) {
+  const key = feedbackGroupKey(row);
+  return state.rows.some((candidate) =>
+    feedbackGroupKey(candidate) === key && candidate.feedback_language_independent === true
+  );
+}
+
+function patternRowsFor(rowOrPattern) {
+  const pattern = String(typeof rowOrPattern === "object" ? rowOrPattern.pattern : rowOrPattern).trim() || "01";
+  return state.rows.filter((row) => (String(row.pattern || "").trim() || "01") === pattern);
+}
+
+function patternFeedbackSeparate(rowOrPattern) {
+  if (!el.requirePairs.checked) return true;
+  return patternRowsFor(rowOrPattern).some((row) => row.feedback_by_truth === true);
+}
+
+function feedbackModeToggle(row, index) {
+  if (!el.requirePairs.checked) return null;
+  const patternRows = patternRowsFor(row);
+  const firstIndex = Math.min(...patternRows.map((candidate) => state.rows.indexOf(candidate)));
+  if (index !== firstIndex) return null;
+  const label = document.createElement("label");
+  label.className = "feedback-mode-toggle";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = patternFeedbackSeparate(row);
+  input.addEventListener("change", () => {
+    if (!setPatternFeedbackMode(row.pattern, input.checked)) {
+      input.checked = true;
+      return;
+    }
+    markTranslationsStale("フィードバックの共有設定が変更されました");
+    renderRows();
+    updateOutput();
+  });
+  label.append(input, document.createTextNode("このパターンは真偽別"));
+  return label;
+}
+
+function setPatternFeedbackMode(pattern, separate) {
+  const rows = patternRowsFor(pattern);
+  if (!rows.length) return true;
+  if (!separate) {
+    for (const lang of LANGS) {
+      const valueKey = `feedback_${lang}`;
+      const typeKey = `feedback_type_${lang}`;
+      const sourceFor = (truth) => rows.find((row) =>
+        normalizeTruth(row.truth) === truth && String(row[valueKey] || "").trim()
+      );
+      const correct = sourceFor("C");
+      const wrong = sourceFor("W");
+      if (correct && wrong && (
+        String(correct[valueKey]) !== String(wrong[valueKey])
+        || (correct[typeKey] || "text") !== (wrong[typeKey] || "text")
+        || Boolean(correct.feedback_language_independent) !== Boolean(wrong.feedback_language_independent)
+      )) {
+        setStatus(`パターン ${pattern} のCとWでフィードバックが異なるため、共通化できません`, false, true);
+        return false;
+      }
+    }
+  }
+  rows.forEach((row) => { row.feedback_by_truth = separate; });
+  if (!separate) synchronizeSharedFeedback([String(pattern)]);
+  return true;
 }
 
 function mirrorFeedbackEditors(groupKey, value, type) {
@@ -1072,10 +1194,12 @@ function mirrorFeedbackEditors(groupKey, value, type) {
   });
 }
 
-function synchronizeSharedFeedback() {
+function synchronizeSharedFeedback(patternFilter = null) {
+  const selected = patternFilter ? new Set(patternFilter.map(String)) : null;
   const groups = new Map();
   state.rows.forEach((row) => {
     const pattern = String(row.pattern || "").trim() || "01";
+    if ((selected && !selected.has(pattern)) || patternFeedbackSeparate(pattern)) return;
     if (!groups.has(pattern)) groups.set(pattern, []);
     groups.get(pattern).push(row);
   });
@@ -1086,12 +1210,23 @@ function synchronizeSharedFeedback() {
       const source = rows.find((row) => String(row[valueKey] || "").trim()) || rows[0];
       const value = String(source?.[valueKey] || "");
       const type = source?.[typeKey] || "text";
+      const independent = Boolean(source?.feedback_language_independent);
       rows.forEach((row) => {
         row[valueKey] = value;
         row[typeKey] = type;
+        row.feedback_language_independent = independent;
       });
     });
   });
+}
+
+function feedbackModeConfigValue() {
+  const patterns = [...new Set(state.rows.map((row) => String(row.pattern || "").trim() || "01"))];
+  if (!patterns.length) return el.feedbackByTruth.checked ? "true" : "false";
+  const separateCount = patterns.filter((pattern) => patternFeedbackSeparate(pattern)).length;
+  if (separateCount === 0) return "false";
+  if (separateCount === patterns.length) return "true";
+  return "mixed";
 }
 
 function hasTruthSpecificFeedback(rows = state.rows) {
@@ -1101,7 +1236,11 @@ function hasTruthSpecificFeedback(rows = state.rows) {
     if (!patterns.has(pattern)) patterns.set(pattern, { C: [], W: [] });
     patterns.get(pattern)[normalizeTruth(row.truth)].push(row);
   });
-  return [...patterns.values()].some((pattern) => LANGS.some((lang) => {
+  return [...patterns.values()].some((pattern) => patternHasTruthSpecificFeedback(pattern));
+}
+
+function patternHasTruthSpecificFeedback(pattern) {
+  return LANGS.some((lang) => {
     const valueKey = `feedback_${lang}`;
     const typeKey = `feedback_type_${lang}`;
     const typedValue = (truth) => {
@@ -1115,7 +1254,20 @@ function hasTruthSpecificFeedback(rows = state.rows) {
     const wrong = typedValue("W");
     return (correct.value || wrong.value)
       && (correct.value !== wrong.value || correct.type !== wrong.type);
-  }));
+  });
+}
+
+function assignFeedbackModesFromValues(rows = state.rows) {
+  const patterns = new Map();
+  rows.forEach((row) => {
+    const pattern = String(row.pattern || "").trim() || "01";
+    if (!patterns.has(pattern)) patterns.set(pattern, { C: [], W: [] });
+    patterns.get(pattern)[normalizeTruth(row.truth)].push(row);
+  });
+  patterns.forEach((group) => {
+    const separate = patternHasTruthSpecificFeedback(group);
+    [...group.C, ...group.W].forEach((row) => { row.feedback_by_truth = separate; });
+  });
 }
 
 function removeButton(index) {
@@ -1234,6 +1386,7 @@ function appStateSnapshot() {
     mode: state.mode,
     baseLanguage: baseLang(),
     activeLanguages: activeLangs(),
+    questionLanguageIndependent: state.questionLanguageIndependent,
     questions: Object.fromEntries(LANGS.map((lang) => [lang, {
       value: el.questions[lang].value,
       type: state.questionTypes[lang] || "text",
@@ -1247,6 +1400,7 @@ function appStateSnapshot() {
       correctCounts: el.correctCounts.value,
       requirePairs: el.requirePairs.checked,
       feedbackByTruth: el.feedbackByTruth.checked,
+      feedbackMode: feedbackModeConfigValue(),
     },
     includeSource: state.includeSource ? {
       url: state.includeSource.url,
@@ -1391,12 +1545,14 @@ function choicesLangAssoc(rows) {
 }
 
 function fixedFeedbackAssoc(rows) {
+  const independent = rows.some((row) => row.feedback_language_independent);
   return maximaAssoc(
     activeLangs().map((lang) => {
-      const exact = rows.find((row) => String(row[`feedback_${lang}`] || "").trim());
+      const sourceLang = independent ? baseLang() : lang;
+      const exact = rows.find((row) => String(row[`feedback_${sourceLang}`] || "").trim());
       return [lang, {
-        value: String(exact?.[`feedback_${lang}`] || "").trim(),
-        type: exact?.[`feedback_type_${lang}`] || "text",
+        value: String(exact?.[`feedback_${sourceLang}`] || "").trim(),
+        type: exact?.[`feedback_type_${sourceLang}`] || "text",
       }];
     }),
     "string"
@@ -1434,11 +1590,16 @@ function randomizedLangAssoc(patterns, truth, orderPosition) {
 }
 
 function randomizedFeedbackAssoc(patterns, truth, orderPosition) {
-  const separate = el.feedbackByTruth.checked;
-  const allRows = patterns.flatMap((pattern) => separate ? pattern[truth] : [...pattern.C, ...pattern.W]);
+  const allRows = patterns.flatMap((pattern) => patternFeedbackSeparate(pattern.id)
+    ? pattern[truth]
+    : [...pattern.C, ...pattern.W]);
   const entries = availableLangs(allRows);
   return maximaAssociation(entries.map((lang) => {
-    const values = patterns.map((pattern) => maximaTypedValue(localizedFeedbackTyped(pattern, lang, separate ? truth : null)));
+    const values = patterns.map((pattern) => maximaTypedValue(localizedFeedbackTyped(
+      pattern,
+      lang,
+      patternFeedbackSeparate(pattern.id) ? truth : null
+    )));
     return `["${lang}", [${values.join(", ")}][%__mcq_pattern_order[${orderPosition}]]]`;
   }));
 }
@@ -1461,16 +1622,18 @@ function localizedTyped(row, field, lang) {
 
 function localizedFeedback(pattern, lang, truth = null) {
   const rows = truth ? pattern[truth] : [...pattern.C, ...pattern.W];
-  const exact = rows.find((row) => String(row[`feedback_${lang}`] || "").trim());
-  return String(exact?.[`feedback_${lang}`] || "").trim();
+  const sourceLang = rows.some((row) => row.feedback_language_independent) ? baseLang() : lang;
+  const exact = rows.find((row) => String(row[`feedback_${sourceLang}`] || "").trim());
+  return String(exact?.[`feedback_${sourceLang}`] || "").trim();
 }
 
 function localizedFeedbackTyped(pattern, lang, truth = null) {
   const rows = truth ? pattern[truth] : [...pattern.C, ...pattern.W];
-  const exact = rows.find((row) => String(row[`feedback_${lang}`] || "").trim());
+  const sourceLang = rows.some((row) => row.feedback_language_independent) ? baseLang() : lang;
+  const exact = rows.find((row) => String(row[`feedback_${sourceLang}`] || "").trim());
   return {
-    value: String(exact?.[`feedback_${lang}`] || "").trim(),
-    type: exact?.[`feedback_type_${lang}`] || "text",
+    value: String(exact?.[`feedback_${sourceLang}`] || "").trim(),
+    type: exact?.[`feedback_type_${sourceLang}`] || "text",
   };
 }
 
@@ -1488,7 +1651,10 @@ function groupPatterns() {
 
 function langAssocFromFields() {
   return maximaAssoc(
-    activeLangs().map((lang) => [lang, { value: el.questions[lang].value.trim(), type: state.questionTypes[lang] || "text" }]),
+    activeLangs().map((lang) => {
+      const source = state.questionLanguageIndependent ? baseLang() : lang;
+      return [lang, { value: el.questions[source].value.trim(), type: state.questionTypes[source] || "text" }];
+    }),
     "string"
   );
 }
@@ -1514,7 +1680,7 @@ function maximaAssociation(entries) {
 
 function maximaTypedValue(item) {
   const value = String(item?.value ?? "").trim();
-  return item?.type === "cas" ? value : maximaString(value);
+  return item?.type === "cas" ? value.replace(/[;$]\s*$/, "") : maximaString(value);
 }
 
 function languageBlocks() {
@@ -1538,14 +1704,18 @@ function validateTranslationCoverage() {
   if (!targets.length) return;
   if (state.translationsStale) throw new Error("多言語展開を更新してください");
   targets.forEach((lang) => {
-    if (!el.questions[lang].value.trim()) throw new Error(`${lang} の問題文翻訳がありません`);
+    if (!state.questionLanguageIndependent && !el.questions[lang].value.trim()) {
+      throw new Error(`${lang} の問題文翻訳がありません`);
+    }
     state.rows.forEach((row, index) => {
       if (!row.choice_language_independent
           && String(row[`choice_${source}`] || "").trim()
           && !String(row[`choice_${lang}`] || "").trim()) {
         throw new Error(`${lang} の選択肢翻訳がありません（行 ${index + 1}）`);
       }
-      if (String(row[`feedback_${source}`] || "").trim() && !String(row[`feedback_${lang}`] || "").trim()) {
+      if (!feedbackLanguageIndependent(row)
+          && String(row[`feedback_${source}`] || "").trim()
+          && !String(row[`feedback_${lang}`] || "").trim()) {
         throw new Error(`${lang} のフィードバック翻訳がありません（行 ${index + 1}）`);
       }
     });
@@ -1565,7 +1735,7 @@ function translationPayload() {
     target_languages: translationTargets(),
     preserve_exactly: ["__SELPROMPT__", "__SELTYPE__", "Maxima expressions", "LaTeX", "STACK {@...@} blocks", "HTML tags"],
     question_type: questionType,
-    question_text: questionType === "text" ? el.questions[source].value : null,
+    question_text: !state.questionLanguageIndependent && questionType === "text" ? el.questions[source].value : null,
     rows: state.rows.map((row, index) => ({
       id: String(index),
       pattern: String(row.pattern || ""),
@@ -1575,7 +1745,9 @@ function translationPayload() {
         ? String(row[`choice_${source}`] || "")
         : null,
       feedback_type: row[`feedback_type_${source}`] || "text",
-      feedback: (row[`feedback_type_${source}`] || "text") === "text" ? String(row[`feedback_${source}`] || "") : null,
+      feedback: !feedbackLanguageIndependent(row) && (row[`feedback_type_${source}`] || "text") === "text"
+        ? String(row[`feedback_${source}`] || "")
+        : null,
     })),
   };
 }
@@ -1648,7 +1820,7 @@ function applyTranslationResult() {
       applied += 1;
     });
     if (!applied) throw new Error("対応言語の翻訳を読み込めませんでした");
-    if (el.requirePairs.checked && !el.feedbackByTruth.checked) synchronizeSharedFeedback();
+    if (el.requirePairs.checked) synchronizeSharedFeedback();
     state.translationsStale = false;
     updateBaseLanguageUi();
     updateOutput();
@@ -1695,10 +1867,14 @@ async function readSelectedFile(event) {
   const ext = file.name.split(".").pop().toLowerCase();
   try {
     const records = ext === "xlsx" || ext === "xls" ? await readWorkbook(file) : await readDelimited(file);
-    applyRecords(records);
+    const summary = applyRecords(records);
     renderRows();
     updateOutput();
-    setStatus(`${file.name} を読み込みました`);
+    if (summary.warnings.length) {
+      setStatus(`${file.name} を読み込みました。警告: ${summary.warnings.join("／")}`, false, true);
+    } else {
+      setStatus(`${file.name} を読み込みました`);
+    }
   } catch (error) {
     setStatus(error.message, true);
   } finally {
@@ -1863,6 +2039,7 @@ function applyAppStateSnapshot(snapshot) {
     el.questionModes[lang].value = state.questionTypes[lang];
     el.questionModes[lang].closest(".question-language-field")?.classList.toggle("cas", state.questionTypes[lang] === "cas");
   });
+  state.questionLanguageIndependent = Boolean(snapshot.questionLanguageIndependent);
   state.rows = structuredClone(snapshot.rows);
   el.qvars.value = String(snapshot.qvars || "");
   state.qvars = [el.qvars.value];
@@ -1872,7 +2049,12 @@ function applyAppStateSnapshot(snapshot) {
   el.correctCounts.value = String(snapshot.settings?.correctCounts || "1, 2");
   el.requirePairs.checked = snapshot.settings?.requirePairs !== false;
   el.feedbackByTruth.checked = Boolean(snapshot.settings?.feedbackByTruth);
-  if (el.requirePairs.checked && !el.feedbackByTruth.checked) synchronizeSharedFeedback();
+  state.rows.forEach((row) => {
+    if (typeof row.feedback_by_truth !== "boolean") {
+      row.feedback_by_truth = el.requirePairs.checked && Boolean(snapshot.settings?.feedbackByTruth);
+    }
+  });
+  if (el.requirePairs.checked) synchronizeSharedFeedback();
   state.translationsStale = false;
   state.includeSource = snapshot.includeSource ? {
     url: String(snapshot.includeSource.url || ""),
@@ -2007,8 +2189,9 @@ function importLegacyQuestionVariables(variables, documentNode, filename, xmlVar
   const correctCounts = variables.match(/%_MCQ_NUM_COPTS\s*:\s*rand\s*\(\s*\[([^\]]+)\]/)?.[1];
   if (correctCounts) el.correctCounts.value = correctCounts.trim();
   el.requirePairs.checked = cData.paired && wData.paired;
-  el.feedbackByTruth.checked = el.requirePairs.checked && hasTruthSpecificFeedback(rows);
-  if (el.requirePairs.checked && !el.feedbackByTruth.checked) synchronizeSharedFeedback();
+  assignFeedbackModesFromValues(rows);
+  el.feedbackByTruth.checked = el.requirePairs.checked && rows.every((row) => row.feedback_by_truth);
+  if (el.requirePairs.checked) synchronizeSharedFeedback();
   state.translationsStale = false;
 }
 
@@ -2357,6 +2540,227 @@ function parseDelimited(text, delimiter) {
 }
 
 function applyRecords(records) {
+  const meaningful = records.filter((record) => record.some((value) => String(value).trim()));
+  const version = meaningful.find((record) =>
+    csvRecordKind(record) === "config" && String(record[1] || "").trim().toLowerCase() === "csv_schema"
+  )?.[2];
+  const hasV2Record = meaningful.some((record) => /^(?:option|feedback)\d+[cw]?$/i.test(csvRecordKind(record)));
+  resetCsvImportState();
+  return String(version || "").trim() === "2" || hasV2Record
+    ? applyCsvV2Records(meaningful)
+    : applyLegacyRecords(meaningful);
+}
+
+function csvRecordKind(record) {
+  return String(record[0] || "").replace(/^\uFEFF/, "").trim().toLowerCase();
+}
+
+function resetCsvImportState() {
+  LANGS.forEach((lang) => {
+    el.questions[lang].value = "";
+    state.questionTypes[lang] = "text";
+    el.questionModes[lang].value = "text";
+    el.questionModes[lang].closest(".question-language-field")?.classList.remove("cas");
+    el.languageChecks[lang].checked = false;
+  });
+  state.questionLanguageIndependent = false;
+  el.feedbackByTruth.checked = false;
+}
+
+function applyCsvV2Records(records) {
+  const warnings = [];
+  const rows = [];
+  const qvars = [];
+  const qtexts = new Map();
+  const feedback = new Map();
+  const seen = new Set();
+
+  records.filter((record) => csvRecordKind(record) === "config").forEach((record) => {
+    applyConfig(String(record[1] || "").trim().toLowerCase(), String(record[2] || "").trim());
+  });
+  const feedbackDefault = parseFeedbackMode(records.find((record) =>
+    csvRecordKind(record) === "config" && String(record[1] || "").trim().toLowerCase() === "feedback_by_truth"
+  )?.[2]);
+
+  records.filter((record) => csvRecordKind(record) !== "config").forEach((record, recordIndex) => {
+    const kind = csvRecordKind(record);
+    const type = normalizeCsvValueType(record[1]);
+    const language = csvLanguage(record[2], recordIndex + 1);
+    const value = String(record.slice(3).join(",")).trim();
+    const optionMatch = kind.match(/^option(\d+)([cw])$/i);
+    const feedbackMatch = kind.match(/^feedback(\d+)([cw])?$/i);
+
+    if (kind === "qtextl") {
+      assertCsvType(kind, type, ["string", "cas"], recordIndex + 1);
+      const key = language.independent ? "n/a" : language.lang;
+      warnDuplicate(seen, `qtextL:${key}`, warnings, recordIndex + 1);
+      qtexts.set(key, { type, value, independent: language.independent });
+      if (!language.independent) el.languageChecks[language.lang].checked = true;
+    } else if (kind === "qvar") {
+      assertCsvType(kind, type, ["cas"], recordIndex + 1);
+      if (!language.independent) throw new Error(`行 ${recordIndex + 1}: qvar の第3列は n/a にしてください`);
+      if (value) qvars.push(value);
+    } else if (optionMatch) {
+      assertCsvType(kind, type, ["string", "cas", "cas_list"], recordIndex + 1);
+      const pattern = normalizePatternId(optionMatch[1]);
+      const truth = optionMatch[2].toUpperCase();
+      const lang = language.independent ? baseLang() : language.lang;
+      warnDuplicate(seen, `${kind}:${language.independent ? "n/a" : lang}`, warnings, recordIndex + 1);
+      let row = rows.find((item) => item.pattern === pattern && item.truth === truth);
+      if (!row) {
+        row = { pattern, truth, feedback_by_truth: feedbackDefault === "true" };
+        rows.push(row);
+      }
+      if (row.choice_language_independent !== undefined
+          && row.choice_language_independent !== language.independent) {
+        throw new Error(`行 ${recordIndex + 1}: ${kind} に n/a と言語別の指定は混在できません`);
+      }
+      row.choice_language_independent = language.independent;
+      row[`choice_${lang}`] = value;
+      row[`choice_type_${lang}`] = type === "string" ? "text" : "cas";
+      row[`choice_list_expr_${lang}`] = type === "cas_list";
+      if (!language.independent) el.languageChecks[lang].checked = true;
+    } else if (feedbackMatch) {
+      assertCsvType(kind, type, ["string", "cas"], recordIndex + 1);
+      const pattern = normalizePatternId(feedbackMatch[1]);
+      const truth = feedbackMatch[2]?.toUpperCase() || null;
+      const key = truth ? `${pattern}:${truth}` : pattern;
+      const lang = language.independent ? baseLang() : language.lang;
+      warnDuplicate(seen, `${kind}:${language.independent ? "n/a" : lang}`, warnings, recordIndex + 1);
+      if (!feedback.has(key)) feedback.set(key, { independent: language.independent });
+      const entry = feedback.get(key);
+      if (entry.independent !== language.independent) {
+        throw new Error(`行 ${recordIndex + 1}: ${kind} に n/a と言語別の指定は混在できません`);
+      }
+      entry.independent = language.independent;
+      entry[`feedback_${lang}`] = value;
+      entry[`feedback_type_${lang}`] = type === "cas" ? "cas" : "text";
+      if (!language.independent) el.languageChecks[lang].checked = true;
+    } else if (kind) {
+      warnings.push(`行 ${recordIndex + 1}: 未対応の項目 ${record[0]} を無視しました`);
+    }
+  });
+
+  if (!rows.length) throw new Error("option 行を読み込めませんでした");
+  warnings.push(...completeMissingPairs(rows));
+  applyCsvV2Feedback(rows, feedback, feedbackDefault, warnings);
+  applyImportedQuestionTexts(qtexts, warnings);
+  finishRecordImport(rows, qvars);
+  return { warnings, schema: 2 };
+}
+
+function normalizeCsvValueType(value) {
+  const type = String(value || "").trim().toLowerCase();
+  if (["text", "string", "文字列"].includes(type)) return "string";
+  if (["cas", "expression", "式"].includes(type)) return "cas";
+  if (["cas_list", "caslist"].includes(type)) return "cas_list";
+  return type;
+}
+
+function assertCsvType(kind, type, allowed, line) {
+  if (!allowed.includes(type)) {
+    throw new Error(`行 ${line}: ${kind} の型 ${type || "(空欄)"} は使用できません`);
+  }
+}
+
+function csvLanguage(value, line) {
+  const token = String(value || "").trim().toLowerCase();
+  if (!token || token === "n/a") return { independent: true, lang: baseLang() };
+  if (!LANGS.includes(token)) throw new Error(`行 ${line}: 未対応の言語 ${value}`);
+  return { independent: false, lang: token };
+}
+
+function warnDuplicate(seen, key, warnings, line) {
+  if (seen.has(key)) warnings.push(`行 ${line}: ${key} が重複しているため、後の値を使用しました`);
+  seen.add(key);
+}
+
+function normalizePatternId(value) {
+  const number = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(number) || number < 1) throw new Error(`パターン番号 ${value} が不正です`);
+  return String(number).padStart(2, "0");
+}
+
+function parseFeedbackMode(value) {
+  const token = String(value || "").trim().toLowerCase();
+  if (token === "mixed") return "mixed";
+  return parseBoolean(token) ? "true" : "false";
+}
+
+function completeMissingPairs(rows) {
+  if (!el.requirePairs.checked) return [];
+  const warnings = [];
+  const patterns = [...new Set(rows.map((row) => row.pattern))];
+  patterns.forEach((pattern) => {
+    const patternRows = rows.filter((row) => row.pattern === pattern);
+    ["C", "W"].forEach((truth) => {
+      if (patternRows.some((row) => row.truth === truth)) return;
+      rows.push({
+        pattern,
+        truth,
+        feedback_by_truth: patternRows.some((row) => row.feedback_by_truth),
+        choice_language_independent: false,
+        [`choice_${baseLang()}`]: "",
+        [`choice_type_${baseLang()}`]: "text",
+      });
+      warnings.push(`パターン ${Number(pattern)} に option${Number(pattern)}${truth} がないため、空欄行を追加しました`);
+    });
+  });
+  return warnings;
+}
+
+function applyCsvV2Feedback(rows, feedback, feedbackDefault, warnings) {
+  const patterns = [...new Set(rows.map((row) => row.pattern))];
+  patterns.forEach((pattern) => {
+    const shared = feedback.get(pattern);
+    const correct = feedback.get(`${pattern}:C`);
+    const wrong = feedback.get(`${pattern}:W`);
+    const separate = Boolean(correct || wrong) || (!shared && feedbackDefault === "true");
+    if (shared && (correct || wrong)) {
+      warnings.push(`パターン ${Number(pattern)} に共通と真偽別のfeedbackが併記されています。真偽別を優先しました`);
+    }
+    rows.filter((row) => row.pattern === pattern).forEach((row) => {
+      row.feedback_by_truth = separate;
+      const entry = separate
+        ? (feedback.get(`${pattern}:${row.truth}`) || shared)
+        : shared;
+      if (!entry) return;
+      Object.entries(entry).forEach(([key, value]) => {
+        if (key.startsWith("feedback_")) row[key] = value;
+      });
+      row.feedback_language_independent = Boolean(entry.independent);
+    });
+  });
+}
+
+function applyImportedQuestionTexts(qtexts, warnings) {
+  const independent = qtexts.get("n/a");
+  if (independent && qtexts.size > 1) {
+    throw new Error("qtextL に n/a と言語別の指定は混在できません");
+  }
+  state.questionLanguageIndependent = Boolean(independent);
+  const entries = independent ? [[baseLang(), independent]] : [...qtexts.entries()];
+  entries.forEach(([lang, item]) => {
+    el.questions[lang].value = item.value;
+    state.questionTypes[lang] = item.type === "cas" ? "cas" : "text";
+    el.questionModes[lang].value = state.questionTypes[lang];
+    el.questionModes[lang].closest(".question-language-field")?.classList.toggle("cas", item.type === "cas");
+    el.languageChecks[lang].checked = true;
+  });
+}
+
+function finishRecordImport(rows, qvars) {
+  el.languageChecks[baseLang()].checked = true;
+  updateQuestionLanguageVisibility();
+  state.rows = rows;
+  if (el.requirePairs.checked) synchronizeSharedFeedback();
+  state.qvars = qvars;
+  el.qvars.value = qvars.join("\n");
+  state.translationsStale = false;
+  updateCorrectCountControls();
+}
+
+function applyLegacyRecords(records) {
   const rows = [];
   const feedback = new Map();
   const qvars = [];
@@ -2365,11 +2769,10 @@ function applyRecords(records) {
     String(record[0] || "").replace(/^\uFEFF/, "").trim().toLowerCase() === "config"
     && String(record[1] || "").trim().toLowerCase() === "feedback_by_truth"
   );
-  let truthSpecificFeedback = false;
   el.feedbackByTruth.checked = false;
 
   records.filter((record) => record.some((value) => String(value).trim())).forEach((record) => {
-    const kind = String(record[0] || "").replace(/^\uFEFF/, "").trim().toLowerCase();
+    const kind = csvRecordKind(record);
     if (kind === "qtextl") {
       const type = isValueType(record[2]) ? normalizeValueType(record[2]) : "text";
       qtexts[normalizeLang(record[1])] = { type, value: String(record.slice(isValueType(record[2]) ? 3 : 2).join(",")).trim() };
@@ -2394,7 +2797,7 @@ function applyRecords(records) {
       }
       row[`choice_${lang}`] = choice;
       row[`choice_type_${lang}`] = type;
-      row[`choice_list_expr_${lang}`] = rawType === "cas_list";
+      row[`choice_list_expr_${lang}`] = ["cas_list", "caslist"].includes(rawType);
       if (hasIndependence) row.choice_language_independent = independenceToken === "independent";
     } else if (kind === "feedback") {
       const pattern = String(record[1] || "").trim();
@@ -2408,7 +2811,6 @@ function applyRecords(records) {
       const valueIndex = possibleTypeIndex + (isValueType(record[possibleTypeIndex]) ? 1 : 0);
       const value = String(record.slice(valueIndex).join(",")).trim();
       const key = hasTruth ? `${pattern}:${normalizeTruth(truthToken)}` : pattern;
-      truthSpecificFeedback ||= hasTruth;
       if (!feedback.has(key)) feedback.set(key, {});
       feedback.get(key)[`feedback_${lang}`] = value;
       feedback.get(key)[`feedback_type_${lang}`] = type;
@@ -2419,8 +2821,12 @@ function applyRecords(records) {
 
   rows.forEach((row) => {
     Object.assign(row, feedback.get(`${row.pattern}:${row.truth}`) || feedback.get(row.pattern) || {});
+    row.feedback_by_truth = feedbackByTruthConfigured
+      ? el.feedbackByTruth.checked
+      : feedback.has(`${row.pattern}:C`) || feedback.has(`${row.pattern}:W`);
   });
   if (!rows.length) throw new Error("option 行を読み込めませんでした");
+  const warnings = completeMissingPairs(rows);
   LANGS.forEach((lang) => {
     if (qtexts[lang] != null) {
       el.questions[lang].value = qtexts[lang].value;
@@ -2432,14 +2838,12 @@ function applyRecords(records) {
   });
   updateQuestionLanguageVisibility();
   state.rows = rows;
-  if (el.requirePairs.checked && !feedbackByTruthConfigured) {
-    el.feedbackByTruth.checked = truthSpecificFeedback;
-  }
-  if (el.requirePairs.checked && !el.feedbackByTruth.checked) synchronizeSharedFeedback();
+  if (el.requirePairs.checked) synchronizeSharedFeedback();
   state.qvars = qvars;
   el.qvars.value = qvars.join("\n");
   state.translationsStale = false;
   updateCorrectCountControls();
+  return { warnings, schema: 1 };
 }
 
 function applyConfig(key, value) {
@@ -2451,6 +2855,10 @@ function applyConfig(key, value) {
   if (key === "correct_counts") el.correctCounts.value = value;
   if (key === "require_pairs") el.requirePairs.checked = parseBoolean(value);
   if (key === "feedback_by_truth") el.feedbackByTruth.checked = parseBoolean(value);
+  if (key === "languages") {
+    const selected = String(value).split(/[\s,]+/).map((lang) => lang.trim().toLowerCase()).filter(Boolean);
+    LANGS.forEach((lang) => { el.languageChecks[lang].checked = selected.includes(lang); });
+  }
   if (key === "base_language") {
     el.baseLanguage.value = normalizeLang(value);
     el.languageChecks[el.baseLanguage.value].checked = true;
@@ -2461,6 +2869,7 @@ function applyConfig(key, value) {
 
 function downloadSampleCsv() {
   const records = [
+    ["config", "csv_schema", "2"],
     ["config", "question_id", "000.sample-mcq"],
     ["config", "mode", state.mode],
     ["config", "num_options", "2"],
@@ -2468,36 +2877,29 @@ function downloadSampleCsv() {
     ["config", "random_correct", el.randomCorrect.checked ? "true" : "false"],
     ["config", "correct_counts", el.correctCounts.value],
     ["config", "require_pairs", el.requirePairs.checked ? "true" : "false"],
-    ["config", "feedback_by_truth", el.feedbackByTruth.checked ? "true" : "false"],
+    ["config", "feedback_by_truth", el.requirePairs.checked ? "mixed" : "true"],
     ["config", "base_language", baseLang()],
-    ["qtextL", "ja", DEFAULT_QUESTION_TEXTS.ja],
-    ["qtextL", "en", DEFAULT_QUESTION_TEXTS.en],
-    ["qvar", "", "aa1:rand([1, 2, 3])"],
-    ["qvar", "", "aa2:rand([3, 4, 5])"],
+    ["qtextL", "string", "ja", DEFAULT_QUESTION_TEXTS.ja],
+    ["qtextL", "string", "en", DEFAULT_QUESTION_TEXTS.en],
+    ["qvar", "cas", "n/a", "aa1:rand([1, 2, 3])"],
+    ["qvar", "cas", "n/a", "aa2:rand([3, 4, 5])"],
   ];
   if (el.requirePairs.checked) {
-    records.push(["option", "01", "C", "太陽は恒星である"], ["option", "01", "W", "太陽は惑星である"]);
-    records.push(...(el.feedbackByTruth.checked
-      ? [
-        ["feedback", "01", "C", "太陽は自ら光を放つ恒星です。"],
-        ["feedback", "01", "W", "太陽は惑星ではなく、自ら光を放つ恒星です。"],
-      ]
-      : [["feedback", "01", "太陽は自ら光を放つ恒星です。"]]));
-    records.push(["option", "02", "C", "地球は惑星である"], ["option", "02", "W", "地球は恒星である"]);
-    records.push(...(el.feedbackByTruth.checked
-      ? [
-        ["feedback", "02", "C", "地球は太陽の周りを公転する惑星です。"],
-        ["feedback", "02", "W", "地球は恒星ではなく、太陽の周りを公転する惑星です。"],
-      ]
-      : [["feedback", "02", "地球は太陽の周りを公転する惑星です。"]]));
+    records.push(
+      ["option1C", "string", "ja", "太陽は恒星である"],
+      ["option1W", "string", "ja", "太陽は惑星である"],
+      ["feedback1", "string", "ja", "太陽は自ら光を放つ恒星です。"],
+      ["option2C", "string", "ja", "地球は惑星である"],
+      ["option2W", "string", "ja", "地球は恒星である"],
+      ["feedback2C", "string", "ja", "地球は太陽の周りを公転する惑星です。"],
+      ["feedback2W", "string", "ja", "地球は恒星ではなく、太陽の周りを公転する惑星です。"]
+    );
   } else {
     records.push(
-      ["option", "01", "C", "\\(x^2=1\\) の解は \\(x=1,-1\\) である"],
-      ["option", "01", "C", "\\(x^2-1=0\\) の解は \\(x=\\pm1\\) である"],
-      ["feedback", "01", "C", "因数分解すると \\((x-1)(x+1)=0\\) です。"],
-      ["option", "02", "W", "\\(x^2=1\\) の解は \\(x=1\\) だけである"],
-      ["option", "02", "W", "\\(x^2-1=0\\) の解は正の数だけである"],
-      ["feedback", "02", "W", "負の解 \\(x=-1\\) もあります。"]
+      ["option1C", "cas_list", "n/a", '["\\(x^2=1\\) の解は \\(x=1,-1\\) である", "\\(x^2-1=0\\) の解は \\(x=\\pm1\\) である"]'],
+      ["feedback1C", "string", "ja", "因数分解すると \\((x-1)(x+1)=0\\) です。"],
+      ["option2W", "cas_list", "n/a", '["\\(x^2=1\\) の解は \\(x=1\\) だけである", "\\(x^2-1=0\\) の解は正の数だけである"]'],
+      ["feedback2W", "string", "ja", "負の解 \\(x=-1\\) もあります。"]
     );
   }
   downloadText("mcq_sample.csv", csvText(records), "text/csv;charset=utf-8");
@@ -2506,14 +2908,19 @@ function downloadSampleCsv() {
 function downloadCurrentCsv() {
   const title = titleForSave();
   if (!title) return;
-  const records = currentCsvRecords(title);
-  const filename = `${title}.csv`;
-  downloadText(filename, csvText(records), "text/csv;charset=utf-8");
-  setStatus(`${filename} を保存しました`);
+  try {
+    const records = currentCsvRecords(title);
+    const filename = `${title}.csv`;
+    downloadText(filename, csvText(records), "text/csv;charset=utf-8");
+    setStatus(`${filename} を保存しました`);
+  } catch (error) {
+    setStatus(`CSVを保存できません: ${error.message}`, true);
+  }
 }
 
 function currentCsvRecords(title) {
   const records = [
+    ["config", "csv_schema", "2"],
     ["config", "question_id", title],
     ["config", "mode", state.mode],
     ["config", "num_options", el.numOptions.value],
@@ -2521,33 +2928,48 @@ function currentCsvRecords(title) {
     ["config", "random_correct", el.randomCorrect.checked ? "true" : "false"],
     ["config", "correct_counts", el.correctCounts.value],
     ["config", "require_pairs", el.requirePairs.checked ? "true" : "false"],
-    ["config", "feedback_by_truth", el.feedbackByTruth.checked ? "true" : "false"],
+    ["config", "feedback_by_truth", feedbackModeConfigValue()],
     ["config", "base_language", baseLang()],
+    ["config", "languages", activeLangs().join(",")],
   ];
 
-  LANGS.forEach((lang) => {
+  const questionLanguages = state.questionLanguageIndependent ? ["n/a"] : activeLangs();
+  questionLanguages.forEach((langToken) => {
+    const lang = langToken === "n/a" ? baseLang() : langToken;
     const value = el.questions[lang].value.trim();
-    if (value) records.push(["qtextL", lang, state.questionTypes[lang] || "text", value]);
+    if (value) records.push(["qtextL", csvValueType(state.questionTypes[lang]), langToken, value]);
   });
   state.qvars
     .map((expression) => String(expression).trim())
     .filter(Boolean)
-    .forEach((expression) => records.push(["qvar", "", expression]));
+    .forEach((expression) => records.push(["qvar", "cas", "n/a", expression]));
 
+  const optionGroups = new Map();
   state.rows.forEach((row) => {
-    LANGS.forEach((lang) => {
-      const value = String(row[`choice_${lang}`] || "").trim();
-      if (!value) return;
-      const type = row[`choice_list_expr_${lang}`] ? "cas_list" : (row[`choice_type_${lang}`] || "text");
-      records.push([
-        "option",
-        row.pattern,
-        normalizeTruth(row.truth),
-        lang,
-        type,
-        row.choice_language_independent ? "independent" : "dependent",
-        value,
-      ]);
+    const key = `${String(row.pattern || "").trim()}:${normalizeTruth(row.truth)}`;
+    if (!optionGroups.has(key)) optionGroups.set(key, []);
+    optionGroups.get(key).push(row);
+  });
+  optionGroups.forEach((groupRows, key) => {
+    const [pattern, truth] = key.split(":");
+    const recordName = `option${csvPatternToken(pattern)}${truth}`;
+    const independent = groupRows.every((row) => row.choice_language_independent);
+    const languages = independent ? ["n/a"] : activeLangs();
+    languages.forEach((langToken) => {
+      const lang = langToken === "n/a" ? baseLang() : langToken;
+      const items = groupRows.map((row) => {
+        const sourceLang = row.choice_language_independent ? baseLang() : lang;
+        return localizedTyped(row, "choice", sourceLang);
+      }).filter((item) => item.value);
+      if (!items.length) {
+        if (lang === baseLang()) records.push([recordName, "string", langToken, ""]);
+        return;
+      }
+      if (items.length === 1) {
+        records.push([recordName, csvValueType(items[0].type, items[0].listExpression), langToken, items[0].value]);
+      } else {
+        records.push([recordName, "cas_list", langToken, maximaChoiceList(items)]);
+      }
     });
   });
 
@@ -2557,17 +2979,38 @@ function currentCsvRecords(title) {
     if (writtenFeedback.has(key)) return;
     writtenFeedback.add(key);
     const groupRows = state.rows.filter((candidate) => feedbackGroupKey(candidate) === key);
-    LANGS.forEach((lang) => {
+    const independent = groupRows.some((candidate) => candidate.feedback_language_independent);
+    const languages = independent ? ["n/a"] : activeLangs();
+    languages.forEach((langToken) => {
+      const lang = langToken === "n/a" ? baseLang() : langToken;
       const source = groupRows.find((candidate) => String(candidate[`feedback_${lang}`] || "").trim());
       const value = String(source?.[`feedback_${lang}`] || "").trim();
       if (!value) return;
-      const base = el.requirePairs.checked && !el.feedbackByTruth.checked
-        ? ["feedback", row.pattern]
-        : ["feedback", row.pattern, normalizeTruth(row.truth)];
-      records.push([...base, lang, source?.[`feedback_type_${lang}`] || "text", value]);
+      const suffix = el.requirePairs.checked && !patternFeedbackSeparate(row)
+        ? ""
+        : normalizeTruth(row.truth);
+      records.push([
+        `feedback${csvPatternToken(row.pattern)}${suffix}`,
+        csvValueType(source?.[`feedback_type_${lang}`]),
+        langToken,
+        value,
+      ]);
     });
   });
   return records;
+}
+
+function csvValueType(type, listExpression = false) {
+  if (listExpression) return "cas_list";
+  return type === "cas" ? "cas" : "string";
+}
+
+function csvPatternToken(value) {
+  const token = String(value || "").trim();
+  if (!/^\d+$/.test(token) || Number(token) < 1) {
+    throw new Error(`パターン番号 ${token || "(空欄)"} は正の整数にしてください`);
+  }
+  return String(Number(token));
 }
 
 function csvLine(values) {
@@ -2716,11 +3159,11 @@ function parseBoolean(value) {
 }
 
 function isValueType(value) {
-  return ["text", "string", "cas", "cas_list", "expression", "式", "文字列"].includes(String(value ?? "").trim().toLowerCase());
+  return ["text", "string", "cas", "cas_list", "caslist", "expression", "式", "文字列"].includes(String(value ?? "").trim().toLowerCase());
 }
 
 function normalizeValueType(value) {
-  return ["cas", "cas_list", "expression", "式"].includes(String(value ?? "").trim().toLowerCase()) ? "cas" : "text";
+  return ["cas", "cas_list", "caslist", "expression", "式"].includes(String(value ?? "").trim().toLowerCase()) ? "cas" : "text";
 }
 function normalizeLang(value) {
   const lang = String(value || "ja").trim().toLowerCase();
@@ -2767,7 +3210,8 @@ function nextPattern() {
   return String(Math.max(0, ...values) + 1).padStart(2, "0");
 }
 
-function setStatus(message, isError = false) {
+function setStatus(message, isError = false, isWarning = false) {
   el.statusLine.textContent = message;
   el.statusLine.classList.toggle("error", isError);
+  el.statusLine.classList.toggle("warning", !isError && isWarning);
 }

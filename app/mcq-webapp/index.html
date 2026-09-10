@@ -114,11 +114,6 @@
         <div id="settingsResizeHandle" class="settings-resize-handle" role="separator" aria-orientation="vertical" aria-label="左欄の幅を変更" title="左右にドラッグして左欄の幅を変更"></div>
 
         <section class="panel data-panel">
-          <section class="question-texts" aria-labelledby="questionTextsHeading">
-            <h2 id="questionTextsHeading">問題文</h2>
-            <div id="questionTextFields"></div>
-          </section>
-          <div class="section-divider"></div>
           <section class="choice-settings" aria-labelledby="choiceSettingsHeading">
             <h2 id="choiceSettingsHeading">選択肢設定</h2>
             <div class="choice-settings-grid">
@@ -158,6 +153,21 @@
                 </label>
               </div>
             </div>
+          </section>
+          <div class="section-divider"></div>
+          <section class="question-texts" aria-labelledby="questionTextsHeading">
+            <div class="question-text-heading">
+              <h2 id="questionTextsHeading">問題文</h2>
+              <div class="question-text-help">
+                <button type="button" class="question-text-help-button" aria-label="問題文の入力について" aria-describedby="questionTextHelp">?</button>
+                <div id="questionTextHelp" class="question-text-tooltip" role="tooltip">
+                  <p>問題文に __SELPROMPT__ を入れると、上の選択肢設定に応じて「正しいものを1つ選べ。」「正しいものをすべて選べ。」などの指示文が自動的に入ります。</p>
+                  <p>Radio形式で正解が2つ以上になり得る場合は、「正しいものを1つ選べ（複数ある場合も1つでよい）。」という説明まで入ります。</p>
+                  <p>自動の指示文が気に入らない場合は、__SELPROMPT__ を使わずに、自分で好きな指示文を書いても問題ありません。</p>
+                </div>
+              </div>
+            </div>
+            <div id="questionTextFields"></div>
           </section>
           <div class="section-divider"></div>
           <div class="panel-heading">

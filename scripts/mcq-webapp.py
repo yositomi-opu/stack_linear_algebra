@@ -548,34 +548,62 @@ def offer_linux_docker_group_fix() -> None:
     )
 
 
-def require_docker_daemon(*, offer_group_fix: bool = False) -> None:
-    completed = subprocess.run(
-        ["docker", "info"],
-        cwd=REPO_ROOT,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
+def docker_daemon_probe(*, timeout: float = 10) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["docker", "info"], cwd=REPO_ROOT, stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE, text=True, check=False, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(["docker", "info"], 1, stderr="Docker connection timed out")
+
+
+def start_macos_docker_desktop() -> None:
+    print_step("Docker Desktopを自動起動しています（最大120秒待ちます）")
+    try:
+        completed = subprocess.run(
+            ["open", "-g", "-a", "Docker"], capture_output=True,
+            text=True, check=False, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ManagerError(f"Docker Desktopを自動起動できませんでした。手動で起動してください: {exc}") from exc
+    if completed.returncode:
+        raise ManagerError(f"Docker Desktopを自動起動できませんでした: {completed.stderr.strip()}")
+    deadline = time.monotonic() + 120
+    while (remaining := deadline - time.monotonic()) > 0:
+        if docker_daemon_probe(timeout=min(10, remaining)).returncode == 0:
+            print("Docker Desktop: 起動完了", flush=True)
+            return
+        time.sleep(min(2, max(0, deadline - time.monotonic())))
+    raise ManagerError(
+        "Docker Desktopの起動を120秒待ちましたが、接続できませんでした。\n"
+        "Docker Desktop画面で初回設定やエラーを確認し、起動完了後に再実行してください。"
     )
+
+
+def require_docker_daemon(*, offer_group_fix: bool = False, auto_start: bool = False) -> None:
+    completed = docker_daemon_probe()
     if completed.returncode:
         diagnostics = completed.stderr.strip().lower()
         if platform.system() == "Darwin":
-            applications = (Path("/Applications/Docker.app"), Path.home() / "Applications" / "Docker.app")
-            if not any(application.is_dir() for application in applications):
+            if not macos_docker_desktop_installed():
                 raise ManagerError(
                     "Dockerコマンドは見つかりましたが、Docker Desktop本体が見つかりません。\n"
                     f"{dependency_help()}"
                 )
+            if auto_start:
+                start_macos_docker_desktop()
+                return
             raise ManagerError(
                 "Docker Desktopはインストールされていますが、Docker daemonへ接続できません。\n"
-                "open -a Docker で起動し、起動完了を待ってから再実行してください。"
+                "make start または make setup でDocker Desktopを自動起動できます。"
             )
         if platform.system() == "Linux" and ("permission denied" in diagnostics or "connect: permission" in diagnostics):
             if offer_group_fix and hasattr(os, "getuid") and os.geteuid() != 0:
                 offer_linux_docker_group_fix()
             raise ManagerError(
                 "Docker socketへのアクセス権限がありません。次を実行してからログインし直してください。\n"
-                "sudo usermod -aG docker \"$USER\""
+                'sudo usermod -aG docker "$USER"'
             )
         raise ManagerError(f"Docker daemonへ接続できません。Docker DesktopまたはDocker Engineを起動してください。\n{dependency_help()}")
 
@@ -740,7 +768,7 @@ def check_maxima_evaluation() -> None:
 
 def start_services(config: dict[str, Any]) -> None:
     require_basic_dependencies()
-    require_docker_daemon()
+    require_docker_daemon(auto_start=True)
     print_step("STACK APIを起動")
     run(
         compose_command(config, "up", "-d"),
@@ -782,7 +810,7 @@ def setup(config: dict[str, Any]) -> None:
     if missing:
         install_missing_dependencies(missing)
     require_basic_dependencies()
-    require_docker_daemon(offer_group_fix=True)
+    require_docker_daemon(offer_group_fix=True, auto_start=True)
     compose_prefix()
     print_step("公式STACK APIイメージを取得")
     run(compose_command(config, "pull"), env=compose_environment(config))

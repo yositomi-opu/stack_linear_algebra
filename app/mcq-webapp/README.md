@@ -4,7 +4,7 @@
 
 画面で編集した内容は「CSV保存」で再編集可能なCSVとして保存できます。「CSV見本」は現在選択中の真偽ペアモードに対応した固定サンプルを保存します。保存するCSVと同梱サンプルにはUTF-8 BOMを付けているため、Excelから直接開いても日本語が文字化けしません。
 
-選択肢数の最大値は、文字列1件を1候補、評価済みCASリストをその`length`件として、利用可能な候補数に合わせて自動調整されます。同じパターンのCASリストから複数の選択肢を生成できます。問題文は右欄の先頭に表示されます。生成XML欄は起動時には非表示で、縦の「XML」タブで開閉でき、境界線をドラッグして幅を調整できます。「表示設定」ではXML列の表示・非表示と、設定欄・選択肢欄の幅も変更できます。
+選択肢数の最大値は、文字列1件を1候補、評価済みCASリストをその`length`件として、利用可能な候補数に合わせて自動調整されます。同じパターンのCASリストから複数の選択肢を生成できます。問題文は右欄の選択肢設定の下に表示されます。見出し右端の「？」にカーソルを置くか、キーボードでフォーカスすると、`__SELPROMPT__`による指示文の自動挿入と、手動での指示文入力についての説明が表示されます。生成XML欄は起動時には非表示で、縦の「XML」タブで開閉でき、境界線をドラッグして幅を調整できます。「表示設定」ではXML列の表示・非表示と、設定欄・選択肢欄の幅も変更できます。
 
 ## 編集用サンプル
 
@@ -12,7 +12,7 @@
 
 ## 初めて使う場合
 
-Git、Python 3.10以降、Docker EngineとDocker Composeを用意してから、このリポジトリをcloneします。macOS／WindowsではDocker Desktopを使うのが簡単です。Docker Desktopは起動した状態にしてください。
+Git、Python 3.10以降、Docker EngineとDocker Composeを用意してから、このリポジトリをcloneします。macOS／WindowsではDocker Desktopを使うのが簡単です。macOSでは、Docker Desktopが停止していれば起動操作時に自動起動します。他のOSではDockerを起動した状態にしてください。
 
 ```sh
 git clone https://github.com/yositomi-opu/stack_questions.git
@@ -81,7 +81,7 @@ brew install --cask docker-desktop
 open -a Docker
 ```
 
-Docker Desktopの起動完了後、`docker info`が成功することを確認してから`make setup`を実行します。`make setup`はOSを自動判別し、macOSでDocker Desktop本体が見つからない場合には上記のインストール方法を表示します。
+macOSでは`make setup`、`make start`、`make restart`、Finderからのランチャー起動時にDockerへ接続できなければ、インストール済みのDocker Desktopを自動起動し、最大120秒待ってから処理を続けます。すでにDockerが動作していればそのまま使用します。初回設定画面が表示された場合は画面の案内に従ってください。時間内に起動しなければ理由と再実行の案内を表示します。`make check`は接続診断のみを行います。`make setup`はOSを自動判別し、macOSでDocker Desktop本体が見つからない場合には上記のインストール方法を表示します。
 
 macOSで初回のダブルクリックがセキュリティ設定により拒否された場合は、FinderでファイルをControlキーを押しながらクリックして「開く」を選択するか、ターミナルから次を実行します。
 

@@ -1050,3 +1050,65 @@ td:nth-child(5) {
     width: 0;
   }
 }
+
+.question-text-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.question-text-help {
+  position: relative;
+  flex: none;
+}
+
+.question-text-help-button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--muted);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--muted);
+  font-weight: 700;
+  cursor: help;
+}
+
+.question-text-help-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.question-text-tooltip {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+  width: min(380px, calc(100vw - 64px));
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 6px 18px rgb(32 33 36 / 18%);
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  visibility: hidden;
+}
+
+.question-text-help:hover .question-text-tooltip,
+.question-text-help:focus-within .question-text-tooltip {
+  visibility: visible;
+}
+
+.question-text-tooltip p {
+  margin: 0;
+}
+
+.question-text-tooltip p + p {
+  margin-top: 8px;
+}

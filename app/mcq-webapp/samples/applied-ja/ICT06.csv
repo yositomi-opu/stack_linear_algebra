@@ -1,0 +1,19 @@
+config,question_id,ICT06
+config,mode,rb
+config,num_options,4
+config,num_correct,1
+config,require_pairs,true
+config,base_language,ja
+qtextL,ja,【情報・AIリテラシー：著作権・引用・ライセンス】次の記述について答えよ。__SELPROMPT__
+option,01,C,インターネットで無料閲覧できる著作物にも、原則として著作権がある
+option,01,W,検索で見つかった画像や文章は、無料表示されていれば自由に再配布できる
+feedback,01,閲覧可能であることと、複製・公衆送信・改変の許可があることは別です。
+option,02,C,引用では、自分の説明と引用部分を明確に区別し、出典を示す
+option,02,W,出典名だけ末尾に書けば、本文の大部分を引用だけで構成しても必ず適法になる
+feedback,02,引用には公表済み、必要性、主従関係、明瞭区別、出所明示などの条件を検討します。
+option,03,C,Creative Commonsライセンスは、種類ごとに表示、非営利、改変禁止などの条件が異なる
+option,03,W,Creative Commonsの表示がある作品は、ライセンス種類を見ず無条件で利用できる
+feedback,03,ライセンス記号と版を確認し、著作者表示や改変表示など指定条件を守ります。
+option,04,C,授業内利用の例外があっても、一般公開Webへの掲載に同じ例外が適用されるとは限らない
+option,04,W,授業で使えた資料は、同じ条件で世界中へ公開しても必ず問題ない
+feedback,04,利用主体、目的、範囲、送信先で適用条件が変わります。公開前に権利処理を再確認します。

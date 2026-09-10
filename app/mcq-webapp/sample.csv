@@ -1,10 +1,11 @@
-config,question_id,000.sample-mcq
+﻿config,question_id,000.sample-mcq
 config,mode,rb
 config,num_options,2
 config,num_correct,1
 config,random_correct,false
 config,correct_counts,"1, 2"
 config,require_pairs,true
+config,feedback_by_truth,false
 qtextL,ja,"次の選択肢について答えよ。__SELPROMPT__"
 qtextL,en,"Consider the following options. __SELPROMPT__"
 qvar,,"aa1:rand([1, 2, 3])"

@@ -49,6 +49,7 @@ select {
 textarea:disabled {
   background: #f2f4f7;
   color: var(--muted);
+  cursor: not-allowed;
 }
 
 input:disabled {
@@ -755,6 +756,10 @@ h3 {
   display: grid;
   gap: 7px;
   padding-bottom: 3px;
+}
+
+.nested-check-row {
+  margin-left: 24px;
 }
 
 .random-correct-row,

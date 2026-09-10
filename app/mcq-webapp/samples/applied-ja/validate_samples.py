@@ -14,7 +14,9 @@ EXPECTED = {code: 10 for code in ("NUR", "CIV", "ECO", "STA", "ETH", "ICT")}
 
 def validate_file(path: Path) -> str:
     """Validate one WebApp CSV file and return its question ID."""
-    with path.open(encoding="utf-8", newline="") as handle:
+    if not path.read_bytes().startswith(b"\xef\xbb\xbf"):
+        raise ValueError(f"{path.name}: UTF-8 BOM is missing")
+    with path.open(encoding="utf-8-sig", newline="") as handle:
         rows = list(csv.reader(handle))
     if not rows or any(not row for row in rows):
         raise ValueError(f"{path.name}: empty file or row")

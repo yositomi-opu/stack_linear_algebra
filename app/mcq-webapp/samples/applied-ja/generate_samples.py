@@ -1310,7 +1310,7 @@ def rows_for_question(
 def nursing_rows(number: int) -> list[list[str]]:
     """Reuse the reviewed infection-control samples under the NUR identifier."""
     source = SAMPLE_DIR / f"SampleNurse{number:03d}.csv"
-    with source.open(encoding="utf-8", newline="") as handle:
+    with source.open(encoding="utf-8-sig", newline="") as handle:
         rows = list(csv.reader(handle))
     rows[0] = ["config", "question_id", f"NUR{number:02d}"]
     if not any(row[:2] == ["config", "require_pairs"] for row in rows):
@@ -1321,8 +1321,8 @@ def nursing_rows(number: int) -> list[list[str]]:
 
 
 def write_csv(path: Path, rows: list[list[str]]) -> None:
-    """Write a deterministic UTF-8 CSV file."""
-    with path.open("w", encoding="utf-8", newline="") as handle:
+    """Write a deterministic UTF-8 CSV file with an Excel-compatible BOM."""
+    with path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerows(rows)
 

@@ -2,7 +2,7 @@
 
 `001.MCQ-rb.xml` / `001.MCQ-cb.xml` をもとに、CSV または XLSX から MCQ 用 XML を生成するローカル WebApp です。
 
-画面で編集した内容は「CSV保存」で再編集可能なCSVとして保存できます。「CSV見本」は現在選択中の真偽ペアモードに対応した固定サンプルを保存します。
+画面で編集した内容は「CSV保存」で再編集可能なCSVとして保存できます。「CSV見本」は現在選択中の真偽ペアモードに対応した固定サンプルを保存します。保存するCSVと同梱サンプルにはUTF-8 BOMを付けているため、Excelから直接開いても日本語が文字化けしません。
 
 選択肢数の最大値は、文字列1件を1候補、評価済みCASリストをその`length`件として、利用可能な候補数に合わせて自動調整されます。同じパターンのCASリストから複数の選択肢を生成できます。生成XML欄は縦の「XML」タブで開閉でき、境界線をドラッグして幅を調整できます。「表示設定」ではXML列の表示・非表示と、設定欄・選択肢欄の幅も変更できます。
 
@@ -234,6 +234,7 @@ config,num_correct,1
 config,random_correct,false
 config,correct_counts,"1, 2"
 config,require_pairs,true
+config,feedback_by_truth,false
 qtextL,ja,"次の選択肢について答えよ。__SELPROMPT__"
 qtextL,en,"Consider the following options. __SELPROMPT__"
 qvar,,"aa1:rand([1, 2, 3])"
@@ -253,6 +254,15 @@ feedback,02,"パターン02に共通のフィードバック"
 - `config`: 任意です。`question_id`, `mode`, `num_options`, `num_correct` を指定できます。
 - `config,random_correct,true`: 正解数をランダムにします。候補は `config,correct_counts,"1, 2, 3"` のように指定します。
 - `config,require_pairs,true`: 各パターンに C/W の両方を必須とし、命題の真偽をランダムに割り当てます（既定）。
+- `config,feedback_by_truth,true`: 真偽一対モードで、CとWに異なるフィードバックを設定します。省略時と`false`ではパターン共通です。
+
+真偽一対モードの「行追加」は、新しい同一パターンのC行とW行を1行ずつ追加します。「真偽ごとにフィードバックを変える」がオフの場合、フィードバックはパターンの先頭行で編集し、入力内容がグレー表示のもう一方にも同期されます。オンの場合はCとWを個別に編集でき、CSVでは次のように真偽列を加えます。
+
+```csv
+config,feedback_by_truth,true
+feedback,01,C,"真の場合のフィードバック"
+feedback,01,W,"偽の場合のフィードバック"
+```
 
 ### 選択指示のプレースホルダー
 

@@ -1,8 +1,8 @@
 const LANGS = ["en", "ja", "fr", "it", "de", "pt", "zh", "ko", "ru", "sv"];
 const SERVER_CONFIG = window.MCQ_WEBAPP_CONFIG || {};
-const INITIAL_LOCALE = ["ja", "en"].includes(SERVER_CONFIG.locale)
-  ? SERVER_CONFIG.locale
-  : (window.mcqI18n?.language || "ja");
+const INITIAL_LOCALE = window.mcqI18n?.language
+  || (["ja", "en"].includes(SERVER_CONFIG.locale) ? SERVER_CONFIG.locale : "ja");
+const LANGUAGE_SETTINGS_STORAGE_KEY = "mcq-webapp.question-languages";
 const DEFAULT_QUESTION_TEXTS = {
   ja: "次の選択肢について答えよ。__SELPROMPT__",
   en: "Consider the following options. __SELPROMPT__",
@@ -128,6 +128,7 @@ async function init() {
     localStorage.removeItem(INCLUDE_BASE_URL_STORAGE_KEY);
   }
   populateBaseLanguage();
+  restoreLanguageSettings();
   updateQuestionLanguageVisibility();
   updateCorrectCountControls();
   updateLayout();
@@ -229,6 +230,7 @@ function bindEvents() {
   Object.values(el.languageChecks).forEach((node) => {
     node.addEventListener("change", () => {
       ensureOneLanguage(node);
+      saveLanguageSettings();
       updateQuestionLanguageVisibility();
       markTranslationsStale("展開先言語が変更されました");
       updateOutput();
@@ -655,12 +657,33 @@ function populateBaseLanguage() {
   updateBaseLanguageUi();
 }
 
+function restoreLanguageSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LANGUAGE_SETTINGS_STORAGE_KEY));
+    if (!saved || !LANGS.includes(saved.baseLanguage) || !Array.isArray(saved.languages)) return;
+    el.baseLanguage.value = saved.baseLanguage;
+    LANGS.forEach((lang) => {
+      el.languageChecks[lang].checked = lang === saved.baseLanguage || saved.languages.includes(lang);
+    });
+    updateBaseLanguageUi();
+  } catch (_error) { /* Use defaults if storage is unavailable or invalid. */ }
+}
+
+function saveLanguageSettings() {
+  try {
+    localStorage.setItem(LANGUAGE_SETTINGS_STORAGE_KEY, JSON.stringify({
+      baseLanguage: baseLang(), languages: activeLangs(),
+    }));
+  } catch (_error) { /* Keep editing available even when storage is blocked. */ }
+}
+
 function baseLang() {
   return el.baseLanguage.value || INITIAL_LOCALE;
 }
 
 function changeBaseLanguage() {
   el.languageChecks[baseLang()].checked = true;
+  saveLanguageSettings();
   updateBaseLanguageUi();
   updateQuestionLanguageVisibility();
   markCasEvaluationStale();

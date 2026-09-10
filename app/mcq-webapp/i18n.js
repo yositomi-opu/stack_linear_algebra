@@ -156,9 +156,13 @@
 
   const originals = new WeakMap();
   const serverLanguage = window.MCQ_WEBAPP_CONFIG?.locale;
-  let language = ["ja", "en"].includes(serverLanguage)
-    ? serverLanguage
-    : (localStorage.getItem(STORAGE_KEY) === "en" ? "en" : "ja");
+  let savedLanguage;
+  try {
+    savedLanguage = localStorage.getItem(STORAGE_KEY);
+  } catch (_error) { /* Storage may be unavailable in restricted browsers. */ }
+  let language = ["ja", "en"].includes(savedLanguage)
+    ? savedLanguage
+    : (["ja", "en"].includes(serverLanguage) ? serverLanguage : "ja");
 
   const rules = [
     [/^(\d+)パターン・(\d+)選択肢から生成$/, "$1 patterns, generated from $2 options"],
@@ -241,7 +245,7 @@
 
   function setLanguage(next) {
     language = next === "en" ? "en" : "ja";
-    localStorage.setItem(STORAGE_KEY, language);
+    try { localStorage.setItem(STORAGE_KEY, language); } catch (_error) { /* Keep the session usable. */ }
     translateTree();
     window.dispatchEvent(new CustomEvent("mcq-language-change", { detail: { language } }));
   }

@@ -7,8 +7,8 @@
     <link rel="stylesheet" href="./styles.css?v=20260910-ui24">
     <script defer src="./vendor/xlsx.full.min.js"></script>
     <script defer src="./config.js?v=20260904-config2"></script>
-    <script defer src="./i18n.js?v=20260910-i18n9"></script>
-    <script defer src="./app.js?v=20260910-ui38"></script>
+    <script defer src="./i18n.js?v=20260911-i18n10"></script>
+    <script defer src="./app.js?v=20260911-ui39"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -42,7 +42,7 @@
           <summary>表示設定</summary>
           <div class="display-settings-menu">
             <label class="check-row display-option" for="showXml">
-              <input id="showXml" type="checkbox" checked>
+              <input id="showXml" type="checkbox">
               <span>XMLを表示する</span>
             </label>
             <div class="field-row">
@@ -109,16 +109,16 @@
             <button id="evaluateCasButton" type="button" class="primary">問題変数を評価</button>
             <p id="casEvaluationStatus" class="cas-evaluation-status" aria-live="polite">未評価</p>
           </div>
-
-          <section class="question-texts" aria-labelledby="questionTextsHeading">
-            <h2 id="questionTextsHeading">問題文</h2>
-            <div id="questionTextFields"></div>
-          </section>
         </aside>
 
         <div id="settingsResizeHandle" class="settings-resize-handle" role="separator" aria-orientation="vertical" aria-label="左欄の幅を変更" title="左右にドラッグして左欄の幅を変更"></div>
 
         <section class="panel data-panel">
+          <section class="question-texts" aria-labelledby="questionTextsHeading">
+            <h2 id="questionTextsHeading">問題文</h2>
+            <div id="questionTextFields"></div>
+          </section>
+          <div class="section-divider"></div>
           <section class="choice-settings" aria-labelledby="choiceSettingsHeading">
             <h2 id="choiceSettingsHeading">選択肢設定</h2>
             <div class="choice-settings-grid">
@@ -237,9 +237,9 @@
           <p id="statusLine" class="status" aria-live="polite"></p>
         </section>
 
-        <div id="xmlPane" class="xml-pane" role="dialog" aria-label="生成XMLウィンドウ">
-          <button id="xmlToggleTab" class="xml-toggle-tab" type="button" aria-pressed="true" title="生成XMLの表示を切り替え">XML</button>
-          <section id="outputPanel" class="panel output-panel">
+        <div id="xmlPane" class="xml-pane closed" role="dialog" aria-label="生成XMLウィンドウ">
+          <button id="xmlToggleTab" class="xml-toggle-tab" type="button" aria-pressed="false" title="生成XMLの表示を切り替え">XML</button>
+          <section id="outputPanel" class="panel output-panel" hidden>
             <div class="panel-heading">
               <h2>生成XML</h2>
               <button id="copyButton" type="button" class="ghost">コピー</button>

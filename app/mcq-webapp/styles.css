@@ -763,17 +763,24 @@ h3 {
 }
 
 .feedback-mode-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 5px;
+  width: fit-content;
   margin-bottom: 4px;
+  white-space: nowrap;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
 }
 
 .feedback-mode-toggle input {
+  flex: 0 0 auto;
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
   margin: 0;
+  padding: 0;
 }
 
 .random-correct-row,

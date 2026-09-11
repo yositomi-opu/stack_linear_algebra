@@ -852,6 +852,12 @@ def read_repository_include(raw_path: str) -> tuple[str, bytes]:
 
 
 class McqRequestHandler(SimpleHTTPRequestHandler):
+    def end_headers(self) -> None:
+        # Revalidate the app shell after updates, including conditional responses.
+        if urlparse(self.path).path in {"/", "/index.html", "/app.js", "/i18n.js", "/styles.css"}:
+            self.send_header("Cache-Control", "no-cache, must-revalidate")
+        super().end_headers()
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, directory=str(WEB_ROOT), **kwargs)
 

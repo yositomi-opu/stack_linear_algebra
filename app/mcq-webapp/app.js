@@ -753,6 +753,18 @@ function renderRows() {
 }
 
 function updateOptionLimit() {
+  const lang = baseLang();
+  const pendingList = state.rows.some((row, index) => {
+    if (!String(row[`choice_${lang}`] || "").trim()
+      || choiceValueType(row, lang) !== "cas_list") return false;
+    const result = state.casEvaluation.expressions[choiceEvaluationId(index, lang)];
+    return state.casEvaluation.stale || !result?.ok || result.type !== "list";
+  });
+  if (pendingList) {
+    // An unevaluated list is not an upper bound on the available choices.
+    el.numOptions.removeAttribute("max");
+    return;
+  }
   const patterns = groupPatterns();
   const capacity = el.requirePairs.checked
     ? patterns.reduce((total, pattern) =>
@@ -761,7 +773,8 @@ function updateOptionLimit() {
       total + patternChoiceCapacity(pattern, "C") + patternChoiceCapacity(pattern, "W"), 0);
   const maximum = Math.max(1, capacity);
   el.numOptions.max = String(maximum);
-  if (Number(el.numOptions.value) > maximum) el.numOptions.value = String(maximum);
+  // Preserve imported/user settings even when invalid; generation reports
+  // insufficient candidates instead of silently changing the question.
 }
 
 function evaluatedChoiceCapacity(row, lang = baseLang()) {
@@ -2037,6 +2050,9 @@ function importXmlText(xmlText, filename = "", includeSource = null) {
     state.includeSource = includeSource;
     syncIncludeControls();
   }
+  state.casEvaluation = { status: "idle", stale: false, variables: [], expressions: {} };
+  renderCasVariables();
+  setCasEvaluationStatus("未評価", "idle");
   renderRows();
   updateCorrectCountControls();
   updateQuestionLanguageVisibility();

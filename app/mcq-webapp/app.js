@@ -2363,11 +2363,15 @@ function managedAssignments(assignments, pattern, fallbackLangs = []) {
   return assignments.map((item) => {
     const match = item.name.match(pattern);
     if (!match) return null;
-    let assoc = extractLanguageAssociation(item.expression);
+    const isDirectOption = /^%__[CW]optL?\d+L?$/.test(item.name)
+      && !item.expression.trim().startsWith("[")
+      && !item.expression.includes("%__mcq_pattern_order");
+    let assoc = isDirectOption ? null : extractLanguageAssociation(item.expression);
     const languageIndependent = /^%__(?:C|W)optL?\d+$/.test(item.name);
     if (!assoc) {
+      const isOption = /^%__[CW]optL?\d+L?$/.test(item.name);
       const listStart = item.expression.indexOf("[");
-      if (listStart >= 0) {
+      if (!isOption && listStart >= 0) {
         try {
           const shared = parseMaximaValue(item.expression, listStart).node;
           assoc = new Map(fallbackLangs.map((lang) => [lang, shared]));
@@ -2419,8 +2423,9 @@ function parseMaximaValue(text, start) {
       index = skipWhitespace(text, index);
       if (text[index] === "]") {
         index += 1;
+        const value = text.slice(skipWhitespace(text, start), index);
         while (text[skipWhitespace(text, index)] === "[") index = skipBalanced(text, skipWhitespace(text, index), "[", "]");
-        return { node: { kind: "list", items }, index };
+        return { node: { kind: "list", items, value }, index };
       }
       const parsed = parseMaximaValue(text, index);
       items.push(parsed.node);
@@ -2477,29 +2482,38 @@ function typedFromAst(node) {
 function optionPatternData(assignments, base) {
   if (!assignments.length) return { paired: false, patterns: [], languages: new Map(), listExpressions: [], languageIndependent: [] };
   const firstValue = assignments[0].assoc.get(base);
-  const nestedPatterns = firstValue?.kind === "list" && firstValue.items.every((item) => item.kind === "list");
+  // Only the legacy randomized exporter uses a list of patterns. A directly
+  // assigned list (including a list of lists) is one candidate-list expression.
+  const nestedPatterns = assignments[0].expression.includes("%__mcq_pattern_order")
+    && firstValue?.kind === "list" && firstValue.items.every((item) => item.kind === "list");
   if (nestedPatterns) {
-    return { paired: true, patterns: firstValue.items, languages: assignments[0].assoc, listExpressions: firstValue.items.map(() => false), languageIndependent: firstValue.items.map(() => assignments[0].languageIndependent) };
+    return { paired: true, patterns: firstValue.items, languages: assignments[0].assoc, listExpressions: firstValue.items.map(() => true), languageIndependent: firstValue.items.map(() => assignments[0].languageIndependent) };
   }
   return {
     paired: false,
     patterns: assignments.map((item) => item.assoc.get(base)).filter(Boolean),
     languages: new Map(LANGS.map((lang) => [lang, { kind: "list", items: assignments.map((item) => item.assoc.get(lang)).filter(Boolean) }])),
-    listExpressions: assignments.map((item) => item.assoc.get(base)?.kind === "raw"),
+    listExpressions: assignments.map(() => true),
     languageIndependent: assignments.map((item) => item.languageIndependent),
   };
 }
 
 function appendImportedRows(target, pattern, truth, patternIndex, optionData, messageAssignments, languages) {
   const basePattern = optionData.patterns[patternIndex];
-  const baseChoices = basePattern?.kind === "list" ? basePattern.items : basePattern ? [basePattern] : [];
+  const listExpression = Boolean(optionData.listExpressions?.[patternIndex]);
+  const baseChoices = basePattern && listExpression ? [basePattern]
+    : basePattern?.kind === "list" ? basePattern.items : basePattern ? [basePattern] : [];
   baseChoices.forEach((baseChoice, choiceIndex) => {
     const row = { pattern, truth };
     languages.forEach((lang) => {
       const langRoot = optionData.languages.get(lang);
       const langPattern = optionData.paired ? langRoot?.items?.[patternIndex] : langRoot?.items?.[patternIndex];
-      const langChoices = langPattern?.kind === "list" ? langPattern.items : langPattern ? [langPattern] : [];
-      const typedChoice = typedFromAst(langChoices[choiceIndex] || (lang === baseLang() ? baseChoice : null));
+      const langChoices = langPattern && listExpression ? [langPattern]
+        : langPattern?.kind === "list" ? langPattern.items : langPattern ? [langPattern] : [];
+      const choiceNode = langChoices[choiceIndex] || (lang === baseLang() ? baseChoice : null);
+      const typedChoice = listExpression && choiceNode
+        ? { type: "cas", value: choiceNode.value || "" }
+        : typedFromAst(choiceNode);
       row[`choice_${lang}`] = typedChoice.value;
       row[`choice_type_${lang}`] = typedChoice.type;
       row[`choice_list_expr_${lang}`] = Boolean(optionData.listExpressions?.[patternIndex] && typedChoice.type === "cas");

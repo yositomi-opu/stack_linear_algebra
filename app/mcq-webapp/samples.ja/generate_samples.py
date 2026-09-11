@@ -8,7 +8,6 @@ from pathlib import Path
 
 
 OUTPUT_DIR = Path(__file__).resolve().parent
-SAMPLE_DIR = OUTPUT_DIR.parent
 
 
 CATEGORIES: dict[str, list[tuple[str, list[tuple[str, str, str]]]]] = {
@@ -1322,58 +1321,6 @@ def rows_for_question(
     return rows
 
 
-def legacy_rows_to_v2(rows: list[list[str]]) -> list[list[str]]:
-    """Convert a simple legacy sample to the four-column CSV schema."""
-    if any(row[:3] == ["config", "csv_schema", "2"] for row in rows):
-        return [
-            *(row[:3] for row in rows if row and row[0] == "config"),
-            *(row[:4] for row in rows if row and row[0] != "config"),
-        ]
-    converted: list[list[str]] = [["config", "csv_schema", "2"]]
-    has_pairs = any(row[:2] == ["config", "require_pairs"] for row in rows)
-    has_feedback_mode = any(row[:2] == ["config", "feedback_by_truth"] for row in rows)
-    has_base_language = any(row[:2] == ["config", "base_language"] for row in rows)
-    for row in rows:
-        if not row:
-            continue
-        if row[0] == "config":
-            converted.append(row[:3])
-        elif row[0] == "qtextL":
-            converted.append(["qtextL", "string", row[1] or "ja", row[2]])
-        elif row[0] == "qvar":
-            converted.append(["qvar", "cas", "n/a", row[2]])
-        elif row[0] == "option":
-            converted.append([f"option{int(row[1])}{row[2]}", "string", "ja", row[3]])
-        elif row[0] == "feedback":
-            suffix = row[2] if len(row) > 3 and row[2] in {"C", "W"} else ""
-            value = row[3] if suffix else row[2]
-            converted.append([f"feedback{int(row[1])}{suffix}", "string", "ja", value])
-    insert_at = next(
-        (index for index, row in enumerate(converted) if row[0] != "config"),
-        len(converted),
-    )
-    if not has_pairs:
-        converted.insert(insert_at, ["config", "require_pairs", "true"])
-        insert_at += 1
-    if not has_feedback_mode:
-        converted.insert(insert_at, ["config", "feedback_by_truth", "false"])
-        insert_at += 1
-    if not has_base_language:
-        converted.insert(insert_at, ["config", "base_language", "ja"])
-    return converted
-
-
-def nursing_rows(number: int) -> list[list[str]]:
-    """Reuse the reviewed infection-control samples under the NUR identifier."""
-    source = SAMPLE_DIR / f"SampleNurse{number:03d}.csv"
-    with source.open(encoding="utf-8-sig", newline="") as handle:
-        rows = list(csv.reader(handle))
-    rows = legacy_rows_to_v2(rows)
-    question_row = next(row for row in rows if row[:2] == ["config", "question_id"])
-    question_row[2] = f"NUR{number:02d}"
-    return rows
-
-
 def write_csv(path: Path, rows: list[list[str]]) -> None:
     """Write a deterministic UTF-8 CSV file with an Excel-compatible BOM."""
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
@@ -1382,15 +1329,7 @@ def write_csv(path: Path, rows: list[list[str]]) -> None:
 
 
 def main() -> None:
-    """Generate every applied-subject sample."""
-    for number in range(1, 11):
-        source = SAMPLE_DIR / f"SampleNurse{number:03d}.csv"
-        with source.open(encoding="utf-8-sig", newline="") as handle:
-            write_csv(source, legacy_rows_to_v2(list(csv.reader(handle))))
-
-    for number in range(1, 11):
-        write_csv(OUTPUT_DIR / f"NUR{number:02d}.csv", nursing_rows(number))
-
+    """Generate 50 non-nursing samples; NUR CSVs are maintained directly."""
     category_names = {
         "CIV": "民法",
         "ECO": "経済学基礎",

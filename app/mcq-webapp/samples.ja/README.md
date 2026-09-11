@@ -1,4 +1,4 @@
-# 実学系・日本語MCQサンプル
+# 日本語MCQサンプル
 
 大学の授業やWorkshopで改変して使うための、真偽一対型（`require_pairs=true`）CSVサンプルです。1ファイルが1問に対応し、各命題について正しい文 `C`、誤った文 `W`、解説フィードバックを収録しています。WebAppの「CSV/XLSX読込」から1ファイルずつ読み込み、選択肢数、正解数、文言などを編集できます。CSVはschema 2の4列形式で、第2列が`string`／`cas`／`cas_list`、第3列が言語コードまたは言語非依存を表す`n/a`です。通常はC/W共通フィードバックですが、`STA10.csv`では真偽別フィードバックとの混在と`cas_list`も例示しています。
 
@@ -34,14 +34,25 @@
 
 ## 再生成
 
-看護学10問は既存の `SampleNurse001.csv`–`SampleNurse010.csv`を読み込み、それ以外は生成スクリプト内の定義から作ります。
+看護学10問は `NUR01.csv`–`NUR10.csv` を正本として直接編集します。残り50問は生成スクリプト内の定義から再生成します。再生成は既存の50問を上書きするため、継続して残す変更は生成スクリプトにも反映してください。看護学CSVは再生成で上書きしません。
 
 ```sh
-python3 app/mcq-webapp/samples/applied-ja/generate_samples.py
+python3 app/mcq-webapp/samples.ja/generate_samples.py
 ```
 
 生成後は、次の検査スクリプトでファイル数、識別子、真偽ペア、フィードバック、CSVの再読込みを確認できます。
 
 ```sh
-python3 app/mcq-webapp/samples/applied-ja/validate_samples.py
+python3 app/mcq-webapp/samples.ja/validate_samples.py
 ```
+
+## 旧配置からの統合
+
+旧 `samples/SampleNurse001.csv`–`SampleNurse010.csv` は、旧 `samples/applied-ja/NUR01.csv`–`NUR10.csv` と問題ID以外の内容が同一だったため、`NUR01.csv`–`NUR10.csv` に統一しました。旧番号001〜010は新番号01〜10に対応します。他の分野もこのフォルダ直下へ移し、全6分野60問を一か所にまとめています。旧名のCSVを手元に保存している場合もWebAppで読み込めます。
+
+看護学サンプルの参考資料（旧一覧から継承）:
+
+- [厚生労働省「医療施設における院内感染の防止について」](https://www.mhlw.go.jp/topics/2005/02/tp0202-1.html)
+- [CDC Standard Precautions](https://www.cdc.gov/infection-control/hcp/basics/standard-precautions.html)
+- [CDC Core Infection Prevention and Control Practices](https://www.cdc.gov/infection-control/hcp/core-practices/index.html)
+- [WHO Five moments for hand hygiene](https://www.who.int/publications/m/item/five-moments-for-hand-hygiene)
